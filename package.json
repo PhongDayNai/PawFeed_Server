@@ -1,0 +1,42 @@
+{
+  "name": "pet-feeder-server",
+  "version": "4.1.0",
+  "description": "Pet Feeder IoT backend server - Phase 0 project bootstrap",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "check": "node --check src/server.js && node --check src/app.js",
+    "health": "node scripts/check-health.mjs"
+  },
+  "keywords": [
+    "pet-feeder",
+    "iot",
+    "express",
+    "mqtt",
+    "backend"
+  ],
+  "author": "Phong Dương Hùng",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "mqtt": "^5.10.3",
+    "mysql2": "^3.12.0",
+    "nanoid": "^5.0.9",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
