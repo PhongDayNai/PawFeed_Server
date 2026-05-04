@@ -44,6 +44,14 @@ export const env = {
     allowReset: parseBoolean(process.env.DB_ALLOW_RESET, false)
   },
 
+  auth: {
+    jwtAccessSecret: process.env.JWT_ACCESS_SECRET || 'change_this_access_secret_in_production',
+    jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'change_this_refresh_secret_in_production',
+    jwtAccessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
+    jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+    bcryptSaltRounds: parseInteger(process.env.BCRYPT_SALT_ROUNDS, 12)
+  },
+
   seed: {
     adminFullName: process.env.SEED_ADMIN_FULL_NAME || 'System Admin',
     adminEmail: process.env.SEED_ADMIN_EMAIL || 'admin@example.com',

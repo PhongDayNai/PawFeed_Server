@@ -19,6 +19,11 @@ The server is built with Node.js and Express. It provides the base HTTP API runt
 - MySQL connection configuration with `mysql2`.
 - SQL migration runner with checksum tracking.
 - SQL seed runner for admin user, MQTT server, demo device, and system settings.
+- Authentication APIs for register, login, refresh, logout, current user, and password changes.
+- Account profile update API.
+- JWT access and refresh tokens.
+- Role middleware for protected admin routes.
+- Request body validation with `zod`.
 - Docker runtime for the API server.
 - Docker Compose setup for the API server and MySQL.
 
@@ -59,6 +64,8 @@ pet-feeder-server/
     ├── controllers/
     ├── middleware/
     ├── routes/
+    ├── services/
+    ├── validators/
     └── utils/
 ```
 
@@ -89,9 +96,12 @@ Important variables:
 - `DB_CONNECTION_LIMIT`: MySQL pool connection limit.
 - `DB_SSL`: enables SSL for app database connections.
 - `DB_ALLOW_RESET`: required before `npm run db:reset -- --force` can reset a non-production database.
+- `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`: secrets used to sign access and refresh tokens.
+- `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN`: JWT expiration windows.
+- `BCRYPT_SALT_ROUNDS`: bcrypt hashing cost for user passwords.
 - `SEED_*`: seed data for the initial admin account, MQTT server, and demo device.
 
-Change all default MySQL, admin, and demo-device passwords before running this on a shared machine or production server.
+Change all default MySQL, admin, demo-device, and JWT secret values before running this on a shared machine or production server.
 
 ## Local Development
 
@@ -214,6 +224,110 @@ You can also run the health check script after the server is running:
 npm run health
 ```
 
+### Authentication
+
+Register a user:
+
+```bash
+curl -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fullName": "Test User",
+    "email": "user@example.com",
+    "password": "User@123456"
+  }'
+```
+
+Log in with the seeded admin account:
+
+```bash
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@example.com",
+    "password": "Admin@123456"
+  }'
+```
+
+Example login response:
+
+```json
+{
+  "ok": true,
+  "user": {
+    "id": 1,
+    "fullName": "System Admin",
+    "email": "admin@example.com",
+    "role": "admin",
+    "isDisabled": false
+  },
+  "tokenType": "Bearer",
+  "accessToken": "...",
+  "refreshToken": "...",
+  "accessTokenExpiresIn": "15m",
+  "refreshTokenExpiresIn": "7d"
+}
+```
+
+Get the current user:
+
+```bash
+curl http://localhost:3000/api/auth/me \
+  -H "Authorization: Bearer ACCESS_TOKEN"
+```
+
+Refresh tokens:
+
+```bash
+curl -X POST http://localhost:3000/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"REFRESH_TOKEN"}'
+```
+
+Change password:
+
+```bash
+curl -X POST http://localhost:3000/api/auth/change-password \
+  -H "Authorization: Bearer ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "currentPassword": "Admin@123456",
+    "newPassword": "Admin@1234567",
+    "confirmNewPassword": "Admin@1234567"
+  }'
+```
+
+Log out:
+
+```bash
+curl -X POST http://localhost:3000/api/auth/logout \
+  -H "Authorization: Bearer ACCESS_TOKEN"
+```
+
+Logout is stateless in the current implementation. The server accepts the request, and the client should delete its local access and refresh tokens.
+
+### Account
+
+Update the current user's profile:
+
+```bash
+curl -X PATCH http://localhost:3000/api/account/profile \
+  -H "Authorization: Bearer ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"fullName":"New Name"}'
+```
+
+### Admin
+
+Test admin role protection:
+
+```bash
+curl http://localhost:3000/api/admin/ping \
+  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+```
+
+A non-admin user receives `INSUFFICIENT_ROLE`.
+
 ### Not Found Response
 
 ```bash
@@ -258,3 +372,10 @@ This route is disabled in production.
 - `npm run db:migrate`: apply pending SQL migrations.
 - `npm run db:seed`: apply SQL seed data.
 - `npm run db:reset`: drop and rebuild a non-production database when explicitly allowed.
+
+## Security Notes
+
+- Refresh tokens are stateless JWTs in the current implementation, so logout does not revoke already issued tokens server-side.
+- Disabled users cannot log in, and existing access tokens for disabled users are rejected by the auth middleware.
+- API responses never include `password_hash`.
+- Use long, random, different values for `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` outside local development.

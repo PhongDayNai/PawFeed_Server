@@ -7,6 +7,9 @@ import { apiRateLimiter } from './middleware/rateLimits.js';
 import { notFoundHandler } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import healthRoutes from './routes/health.routes.js';
+import authRoutes from './routes/auth.routes.js';
+import accountRoutes from './routes/account.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 import devRoutes from './routes/dev.routes.js';
 import { successResponse } from './utils/response.js';
 
@@ -37,6 +40,9 @@ export function createApp() {
 
   app.use('/api', apiRateLimiter);
   app.use('/api', healthRoutes);
+  app.use('/api', authRoutes);
+  app.use('/api', accountRoutes);
+  app.use('/api', adminRoutes);
 
   if (env.enableDevErrorRoute && !env.isProduction) {
     app.use('/api/dev', devRoutes);

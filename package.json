@@ -1,13 +1,13 @@
 {
   "name": "pet-feeder-server",
   "version": "4.1.0",
-  "description": "Pet Feeder IoT backend server - Phase 1 database migrations and seed system",
+  "description": "Pet Feeder IoT backend server - Phase 2 auth and role middleware",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "check": "node --check src/server.js && node --check src/app.js && node --check src/config/db.js && node --check scripts/db.migrate.mjs && node --check scripts/db.seed.mjs && node --check scripts/db.reset.mjs && node --check scripts/db.status.mjs",
+    "check": "node --check src/server.js && node --check src/app.js && node --check src/config/env.js && node --check src/config/db.js && node --check src/controllers/auth.controller.js && node --check src/controllers/account.controller.js && node --check src/controllers/admin.controller.js && node --check src/middleware/auth.js && node --check src/middleware/requireRole.js && node --check src/middleware/validate.js && node --check src/routes/auth.routes.js && node --check src/routes/account.routes.js && node --check src/routes/admin.routes.js && node --check src/services/auth.service.js && node --check src/services/user.service.js && node --check src/utils/errors.js && node --check src/utils/token.js && node --check src/utils/user.js && node --check src/validators/auth.validator.js && node --check src/validators/account.validator.js && node --check scripts/db.migrate.mjs && node --check scripts/db.seed.mjs && node --check scripts/db.reset.mjs && node --check scripts/db.status.mjs",
     "health": "node scripts/check-health.mjs",
     "db:migrate": "node scripts/db.migrate.mjs",
     "db:seed": "node scripts/db.seed.mjs",
@@ -21,7 +21,10 @@
     "mqtt",
     "backend",
     "mysql",
-    "migrations"
+    "migrations",
+    "jwt",
+    "auth",
+    "roles"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",
