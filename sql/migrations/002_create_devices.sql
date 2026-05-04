@@ -1,0 +1,42 @@
+CREATE TABLE IF NOT EXISTS devices (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  device_id VARCHAR(100) UNIQUE NOT NULL,
+  machine_code VARCHAR(100) UNIQUE NOT NULL,
+  claim_code VARCHAR(100) NULL,
+  claim_code_used_at DATETIME NULL,
+  claim_code_rotated_at DATETIME NULL,
+  owner_user_id BIGINT NULL,
+  device_secret TEXT NOT NULL,
+  firmware_version VARCHAR(50) NULL,
+  status VARCHAR(50) DEFAULT 'not_configured',
+  active_config_id VARCHAR(100) NULL,
+  active_config_version INT DEFAULT 0,
+  last_seen_at DATETIME NULL,
+  last_online_at DATETIME NULL,
+  last_offline_at DATETIME NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NULL,
+  CONSTRAINT fk_devices_owner_user_id FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_devices_owner_user_id (owner_user_id),
+  INDEX idx_devices_status (status),
+  INDEX idx_devices_last_seen_at (last_seen_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS device_link_histories (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  device_id BIGINT NULL,
+  user_id BIGINT NULL,
+  machine_code VARCHAR(100) NOT NULL,
+  pairing_code_used VARCHAR(100) NULL,
+  action VARCHAR(50) NOT NULL,
+  client_ip VARCHAR(100) NULL,
+  user_agent TEXT NULL,
+  created_at DATETIME NOT NULL,
+  CONSTRAINT fk_device_link_histories_device_id FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE SET NULL,
+  CONSTRAINT fk_device_link_histories_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_device_link_histories_device_id (device_id),
+  INDEX idx_device_link_histories_user_id (user_id),
+  INDEX idx_device_link_histories_machine_code (machine_code),
+  INDEX idx_device_link_histories_action (action),
+  INDEX idx_device_link_histories_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

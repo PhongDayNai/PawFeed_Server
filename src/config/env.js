@@ -31,5 +31,33 @@ export const env = {
   rateLimitWindowMs: parseInteger(process.env.RATE_LIMIT_WINDOW_MS, 60_000),
   rateLimitMax: parseInteger(process.env.RATE_LIMIT_MAX, 120),
   enableDevErrorRoute: parseBoolean(process.env.ENABLE_DEV_ERROR_ROUTE, false),
-  isProduction: process.env.NODE_ENV === 'production'
+  isProduction: process.env.NODE_ENV === 'production',
+
+  db: {
+    host: process.env.DB_HOST || '127.0.0.1',
+    port: parseInteger(process.env.DB_PORT, 3306),
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'pet_feeder_iot',
+    connectionLimit: parseInteger(process.env.DB_CONNECTION_LIMIT, 10),
+    ssl: parseBoolean(process.env.DB_SSL, false),
+    allowReset: parseBoolean(process.env.DB_ALLOW_RESET, false)
+  },
+
+  seed: {
+    adminFullName: process.env.SEED_ADMIN_FULL_NAME || 'System Admin',
+    adminEmail: process.env.SEED_ADMIN_EMAIL || 'admin@example.com',
+    adminPassword: process.env.SEED_ADMIN_PASSWORD || 'Admin@123456',
+    mqttServerName: process.env.SEED_MQTT_SERVER_NAME || 'local-broker',
+    mqttHost: process.env.SEED_MQTT_HOST || '127.0.0.1',
+    mqttPort: parseInteger(process.env.SEED_MQTT_PORT, 1883),
+    mqttTlsPort: parseInteger(process.env.SEED_MQTT_TLS_PORT, 8883),
+    mqttUseTls: parseBoolean(process.env.SEED_MQTT_USE_TLS, false),
+    demoDeviceId: process.env.SEED_DEMO_DEVICE_ID || 'feeder001',
+    demoMachineCode: process.env.SEED_DEMO_MACHINE_CODE || 'PF-ESP8266-001',
+    demoPairingCode: process.env.SEED_DEMO_PAIRING_CODE || 'A8K2-91PQ',
+    demoDeviceSecret: process.env.SEED_DEMO_DEVICE_SECRET || 'CHANGE_ME_DEVICE_SECRET',
+    demoMqttUsername: process.env.SEED_DEMO_MQTT_USERNAME || 'feeder001',
+    demoMqttPassword: process.env.SEED_DEMO_MQTT_PASSWORD || 'feeder001_dev_password'
+  }
 };

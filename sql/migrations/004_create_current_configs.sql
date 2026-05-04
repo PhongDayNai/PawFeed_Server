@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS device_current_configs (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  device_id BIGINT NOT NULL UNIQUE,
+  wifi_ssid VARCHAR(255) NULL,
+  wifi_password TEXT NULL,
+  address TEXT NULL,
+  address_note TEXT NULL,
+  timezone VARCHAR(100) DEFAULT 'Asia/Bangkok',
+  timezone_offset_sec INT DEFAULT 25200,
+  keep_setup_ap_enabled BOOLEAN DEFAULT FALSE,
+  schedule_enabled BOOLEAN DEFAULT FALSE,
+  schedule_json JSON NULL,
+  latest_config_id VARCHAR(100) NULL,
+  latest_config_version INT DEFAULT 0,
+  last_config_generated_at DATETIME NULL,
+  updated_at DATETIME NULL,
+  CONSTRAINT fk_device_current_configs_device_id FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE,
+  INDEX idx_device_current_configs_latest_config_version (latest_config_version),
+  INDEX idx_device_current_configs_updated_at (updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
