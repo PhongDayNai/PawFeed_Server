@@ -80,7 +80,13 @@
     "stale-device",
     "offline-worker",
     "command-ack-timeout",
-    "command-complete-timeout"
+    "command-complete-timeout",
+    "phase13",
+    "device-events",
+    "feeding-histories",
+    "config-generation-logs",
+    "config-revoke",
+    "operation-logs"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",

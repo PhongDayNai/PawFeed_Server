@@ -19,7 +19,6 @@ import {
 } from '../controllers/currentConfig.controller.js';
 import {
   createConfigFile,
-  getConfigGenerations,
   regenerateConfigFileController
 } from '../controllers/configFile.controller.js';
 import {
@@ -30,17 +29,27 @@ import {
 import { saveCurrentConfigSchema } from '../validators/config.validator.js';
 import { saveScheduleSchema } from '../validators/schedule.validator.js';
 import { createConfigFileSchema, configFileQuerySchema } from '../validators/configFile.validator.js';
-import { paginationQuerySchema } from '../validators/pagination.validator.js';
+
 import {
   feedNow,
   getCommandStatus,
   listCommands
 } from '../controllers/command.controller.js';
 import {
+  getUserConfigGenerations,
+  getUserDeviceEvents,
+  getUserFeedingHistory
+} from '../controllers/operationLog.controller.js';
+import {
   commandParamsSchema,
   feedNowBodySchema,
   listCommandsQuerySchema
 } from '../validators/command.validator.js';
+import {
+  listConfigGenerationsQuerySchema,
+  listDeviceEventsQuerySchema,
+  listFeedingHistoryQuerySchema
+} from '../validators/operationLog.validator.js';
 
 const router = Router();
 
@@ -102,10 +111,22 @@ router.get(
 );
 
 router.get(
+  '/devices/:deviceId/events',
+  validateParams(deviceParamsSchema),
+  validateQuery(listDeviceEventsQuerySchema),
+  asyncHandler(getUserDeviceEvents)
+);
+router.get(
+  '/devices/:deviceId/feeding-history',
+  validateParams(deviceParamsSchema),
+  validateQuery(listFeedingHistoryQuerySchema),
+  asyncHandler(getUserFeedingHistory)
+);
+router.get(
   '/devices/:deviceId/config-generations',
   validateParams(deviceParamsSchema),
-  validateQuery(paginationQuerySchema),
-  asyncHandler(getConfigGenerations)
+  validateQuery(listConfigGenerationsQuerySchema),
+  asyncHandler(getUserConfigGenerations)
 );
 router.get('/devices/:deviceId', validateParams(deviceParamsSchema), asyncHandler(getDevice));
 router.patch(

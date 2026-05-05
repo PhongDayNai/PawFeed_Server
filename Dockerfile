@@ -22,6 +22,7 @@ COPY src ./src
 COPY scripts ./scripts
 COPY sql ./sql
 COPY fixtures ./fixtures
+COPY docs ./docs
 
 USER app
 

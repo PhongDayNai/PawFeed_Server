@@ -19,6 +19,19 @@ import {
   listAdminDevicesQuerySchema
 } from '../validators/adminDevice.validator.js';
 import { listAdminCommandsQuerySchema } from '../validators/command.validator.js';
+import {
+  getAdminConfigGenerationDetail,
+  getAdminConfigGenerations,
+  getAdminDeviceEvents,
+  getAdminFeedingHistories,
+  revokeConfigGeneration
+} from '../controllers/operationLog.controller.js';
+import {
+  configGenerationParamsSchema,
+  listAdminConfigGenerationsQuerySchema,
+  listAdminDeviceEventsQuerySchema,
+  listAdminFeedingHistoriesQuerySchema
+} from '../validators/operationLog.validator.js';
 
 const router = Router();
 
@@ -26,6 +39,19 @@ router.use('/admin', authenticate, requireRole(['admin']));
 
 router.get('/admin/ping', asyncHandler(adminPing));
 router.get('/admin/device-commands', validateQuery(listAdminCommandsQuerySchema), asyncHandler(listAdminDeviceCommands));
+router.get('/admin/device-events', validateQuery(listAdminDeviceEventsQuerySchema), asyncHandler(getAdminDeviceEvents));
+router.get('/admin/feeding-histories', validateQuery(listAdminFeedingHistoriesQuerySchema), asyncHandler(getAdminFeedingHistories));
+router.get('/admin/config-generations', validateQuery(listAdminConfigGenerationsQuerySchema), asyncHandler(getAdminConfigGenerations));
+router.get(
+  '/admin/config-generations/:configId',
+  validateParams(configGenerationParamsSchema),
+  asyncHandler(getAdminConfigGenerationDetail)
+);
+router.post(
+  '/admin/config-generations/:configId/revoke',
+  validateParams(configGenerationParamsSchema),
+  asyncHandler(revokeConfigGeneration)
+);
 router.post('/admin/devices', validateBody(createAdminDeviceSchema), asyncHandler(createDevice));
 router.get('/admin/devices', validateQuery(listAdminDevicesQuerySchema), asyncHandler(listDevices));
 router.get('/admin/devices/:deviceId', validateParams(adminDeviceParamsSchema), asyncHandler(getDevice));
