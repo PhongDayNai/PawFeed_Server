@@ -1,0 +1,35 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: pet-feeder-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: pet_feeder_iot
+      MYSQL_USER: pet_feeder
+      MYSQL_PASSWORD: pet_feeder_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - pet_feeder_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: pet-feeder-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - pet_feeder_mosquitto_data:/mosquitto/data
+      - pet_feeder_mosquitto_log:/mosquitto/log
+
+volumes:
+  pet_feeder_mysql_data:
+  pet_feeder_mosquitto_data:
+  pet_feeder_mosquitto_log:

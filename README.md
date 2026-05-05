@@ -54,6 +54,7 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 ```text
 pet-feeder-server/
 ├── Dockerfile
+├── deploy/
 ├── docker-compose.yml
 ├── package.json
 ├── scripts/
@@ -179,6 +180,7 @@ curl http://localhost:3000/api/health
 
 ```bash
 npm run phase8:generate-sample
+npm run docs:check
 npm run security:scan
 ```
 
@@ -258,6 +260,11 @@ useTls: false
 The backend stores MQTT credentials in MySQL. It does not automatically create users in Mosquitto. If the broker requires username/password authentication, create or sync the same MQTT accounts on the broker before testing device connections.
 
 ## API Endpoints
+
+Detailed endpoint catalog:
+
+```text
+```
 
 ### Health
 
@@ -655,6 +662,21 @@ Run a health check against a running server:
 ```bash
 npm run health
 ```
+
+
+```bash
+npm run docs:check
+```
+
+
+Import the full collection and local environment:
+
+```text
+```
+
+
+## Deployment Notes
+
 
 ## Security Notes
 

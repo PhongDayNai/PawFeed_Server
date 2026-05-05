@@ -15,7 +15,7 @@
     "db:status": "node scripts/db.status.mjs",
     "phase8:generate-sample": "node scripts/phase8.generate-sample-config.mjs",
     "phase8:compare-payload": "node scripts/phase8.compare-payload.mjs",
-    "security:scan": "node scripts/security-scan.mjs"
+    "security:scan": "node scripts/security-scan.mjs",
   },
   "keywords": [
     "auth",
@@ -120,7 +120,12 @@
     "rate-limits",
     "secret-redaction",
     "prototype-pollution-guard",
-    "production-security-check"
+    "production-security-check",
+    "phase20",
+    "deployment-notes",
+    "docker",
+    "api-docs",
+    "readme"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",
