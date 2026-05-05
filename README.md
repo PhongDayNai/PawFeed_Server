@@ -262,10 +262,6 @@ The backend stores MQTT credentials in MySQL. It does not automatically create u
 
 ## API Endpoints
 
-Detailed endpoint catalog:
-
-```text
-```
 
 ### Health
 
@@ -675,9 +671,9 @@ Import the full collection and local environment:
 ```text
 ```
 
-
 ## Deployment Notes
 
+Local infrastructure and production environment examples are available under `deploy/`.
 
 ## Security Notes
 

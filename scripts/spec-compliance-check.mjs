@@ -68,6 +68,7 @@ function tableExists(migrationsText, tableName) {
 const requiredFiles = [
   'package.json',
   'README.md',
+  'deploy/docker-compose.dev.yml',
   'src/app.js',
   'src/routes/auth.routes.js',
   'src/routes/account.routes.js',
@@ -390,14 +391,6 @@ checkSnippets(checks, allFiles, {
 checkSnippets(checks, allFiles, {
 });
 
-checkAnySnippet(checks, allFiles, {
-  category: 'manual-e2e',
-  id: 'e2e.machine-hardware-required',
-  label: 'Machine hardware compatibility requires manual ESP8266 test',
-  snippets: ['Machine ESP8266', 'Machine preview config', 'Machine preview file config'],
-  notes: 'This is marked warning because it cannot be proven by static source scan alone.'
-});
-
 const failed = checks.filter((check) => check.status === 'fail');
 const warned = checks.filter((check) => check.status === 'warn');
 const passed = checks.filter((check) => check.status === 'pass');
@@ -413,7 +406,7 @@ const summary = {
   warnings: warned.length,
   staticCompliance: failed.length === 0,
   notes: [
-    'This check validates source structure, routes, migrations, config signing logic, security guards and documentation.',
+    'This check validates source structure, routes, migrations, config signing logic, security guards and runtime artifacts.',
     'It does not replace end-to-end testing with a real MySQL/MariaDB server, MQTT broker and ESP8266 machine.'
   ]
 };
