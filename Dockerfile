@@ -23,7 +23,6 @@ COPY src ./src
 COPY scripts ./scripts
 COPY sql ./sql
 COPY fixtures ./fixtures
-COPY docs ./docs
 COPY deploy ./deploy
 
 RUN mkdir -p tmp && chown -R app:app tmp
