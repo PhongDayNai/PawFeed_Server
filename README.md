@@ -2,7 +2,7 @@
 
 Backend API server and database tooling for the Pet Feeder IoT system.
 
-The service runs an Express API backed by MySQL. It provides authentication, account management, admin-only device provisioning, pairing-code and QR payload generation, user device ownership, current device configuration, feeding schedule storage, MQTT credential storage, health checks, and database migration/seed scripts.
+The service runs an Express API backed by MySQL. It provides authentication, account management, admin-only device provisioning, pairing-code and QR payload generation, user device ownership, current device configuration, signed config file generation, feeding schedule storage, MQTT credential storage, health checks, and database migration/seed scripts.
 
 ## Features
 
@@ -19,6 +19,7 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 - User device linking and ownership APIs.
 - User-managed current device configuration APIs for Wi-Fi, location, timezone, and setup AP settings.
 - Feeding schedule storage with strict time validation, duration limits, and apply-status reporting.
+- HMAC-signed device config file generation and generation history APIs.
 - Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
 - Device QR payload generation.
 - Pairing-code rotation.
@@ -92,6 +93,9 @@ Important variables:
 - `DB_CONNECTION_LIMIT`: MySQL pool connection limit.
 - `DB_SSL`: enables SSL for app database connections.
 - `DB_ALLOW_RESET`: required before `npm run db:reset -- --force` can reset a non-production database.
+- `CONFIG_FILE_TTL_SEC`: generated config file lifetime in seconds.
+- `DEFAULT_TIMEZONE`, `DEFAULT_TIMEZONE_OFFSET_SEC`, `DEFAULT_KEEP_SETUP_AP_ENABLED`: defaults used when generating config files.
+- `PROVIDER_NAME`, `PROVIDER_BRAND`, `PROVIDER_WEBSITE`, `PROVIDER_CONTACT`, `PROVIDER_NOTE`: provider metadata included in generated config files.
 - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`: secrets used to sign access and refresh tokens.
 - `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN`: JWT expiration windows.
 - `BCRYPT_SALT_ROUNDS`: bcrypt hashing cost for user passwords.
@@ -488,6 +492,71 @@ curl http://localhost:3000/api/devices/feeder001/schedule/apply-status \
   -H "Authorization: Bearer $TOKEN"
 ```
 
+Generate a signed config file and return it as JSON:
+
+```bash
+curl -X POST "http://localhost:3000/api/devices/feeder001/config-file?mode=json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "wifiSsid": "Home_Wifi_5G",
+    "wifiPassword": "12345678",
+    "address": "Kitchen",
+    "addressNote": "Near the window",
+    "timezone": "Asia/Bangkok",
+    "timezoneOffsetSec": 25200,
+    "keepSetupApEnabled": false,
+    "feedingSchedule": {
+      "enabled": true,
+      "items": [
+        {
+          "id": "meal_1",
+          "time": "07:00",
+          "openDurationMs": 1200,
+          "enabled": true
+        }
+      ]
+    }
+  }'
+```
+
+Download a signed config file:
+
+```bash
+curl -X POST http://localhost:3000/api/devices/feeder001/config-file \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -o feeder001 \
+  -d '{
+    "wifiSsid": "Home_Wifi_5G",
+    "wifiPassword": "12345678",
+    "feedingSchedule": {
+      "enabled": true,
+      "items": [
+        {
+          "time": "07:00",
+          "openDurationMs": 1200,
+          "enabled": true
+        }
+      ]
+    }
+  }'
+```
+
+Regenerate a signed config file from the saved current config and schedule:
+
+```bash
+curl -X POST "http://localhost:3000/api/devices/feeder001/config-file/regenerate?mode=json" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+List generated config files:
+
+```bash
+curl "http://localhost:3000/api/devices/feeder001/config-generations?page=1&limit=20" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
 Rename a linked device:
 
 ```bash
@@ -535,6 +604,10 @@ Run syntax checks:
 
 ```bash
 npm run check
+```
+
+
+```bash
 ```
 
 

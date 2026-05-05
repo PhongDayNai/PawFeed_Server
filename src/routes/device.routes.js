@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { validateBody, validateParams } from '../middleware/validate.js';
+import { validateBody, validateParams, validateQuery } from '../middleware/validate.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import {
   getDevice,
@@ -18,12 +18,19 @@ import {
   putSchedule
 } from '../controllers/currentConfig.controller.js';
 import {
+  createConfigFile,
+  getConfigGenerations,
+  regenerateConfigFileController
+} from '../controllers/configFile.controller.js';
+import {
   deviceParamsSchema,
   linkDeviceSchema,
   updateUserDeviceSchema
 } from '../validators/device.validator.js';
 import { saveCurrentConfigSchema } from '../validators/config.validator.js';
 import { saveScheduleSchema } from '../validators/schedule.validator.js';
+import { configFileQuerySchema, createConfigFileSchema } from '../validators/configFile.validator.js';
+import { paginationQuerySchema } from '../validators/pagination.validator.js';
 
 const router = Router();
 
@@ -50,6 +57,25 @@ router.get(
   '/devices/:deviceId/schedule/apply-status',
   validateParams(deviceParamsSchema),
   asyncHandler(getScheduleApplyStatus)
+);
+router.post(
+  '/devices/:deviceId/config-file',
+  validateParams(deviceParamsSchema),
+  validateQuery(configFileQuerySchema),
+  validateBody(createConfigFileSchema),
+  asyncHandler(createConfigFile)
+);
+router.post(
+  '/devices/:deviceId/config-file/regenerate',
+  validateParams(deviceParamsSchema),
+  validateQuery(configFileQuerySchema),
+  asyncHandler(regenerateConfigFileController)
+);
+router.get(
+  '/devices/:deviceId/config-generations',
+  validateParams(deviceParamsSchema),
+  validateQuery(paginationQuerySchema),
+  asyncHandler(getConfigGenerations)
 );
 router.get('/devices/:deviceId', validateParams(deviceParamsSchema), asyncHandler(getDevice));
 router.patch(

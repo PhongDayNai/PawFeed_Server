@@ -37,7 +37,10 @@
     "error-codes",
     "current-config",
     "feeding-schedule",
-    "wifi-config"
+    "wifi-config",
+    "config-file",
+    "config-generation",
+    "hmac-sha256"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",
