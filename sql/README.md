@@ -1,6 +1,6 @@
-# SQL — Pet Feeder Server
+# SQL - Pet Feeder Server
 
-Phase 1 tạo nền database và Phase 2 sử dụng bảng `users` để triển khai Auth.
+This directory contains database migrations and seed files for the Pet Feeder server.
 
 ## Migrations
 
@@ -14,9 +14,10 @@ Phase 1 tạo nền database và Phase 2 sử dụng bảng `users` để triể
 007_create_commands_events_histories.sql
 008_create_system_settings.sql
 009_create_audit_logs.sql
+010_add_device_display_name.sql
 ```
 
-## Auth fields trong bảng users
+## User Auth Fields
 
 ```text
 id
@@ -29,7 +30,7 @@ created_at
 updated_at
 ```
 
-Role hiện hỗ trợ:
+Supported roles:
 
 ```text
 user
@@ -37,7 +38,22 @@ admin
 technician
 ```
 
-`is_disabled = TRUE` sẽ chặn login và chặn cả Bearer token cũ trong middleware `authenticate`.
+`is_disabled = TRUE` blocks login and also blocks previously issued Bearer tokens in the authentication middleware.
+
+## Device Ownership
+
+The `devices` table stores factory identifiers, claim codes, owner assignment, device secrets, firmware metadata, status, and optional user-facing `display_name`.
+
+User device linking uses:
+
+```text
+machine_code
+claim_code
+owner_user_id
+claim_code_used_at
+```
+
+Link attempts and unlink actions are recorded in `device_link_histories`.
 
 ## Seeds
 
@@ -48,7 +64,7 @@ seed_demo_device.sql
 seed_system_settings.sql
 ```
 
-Admin seed mặc định:
+Default admin seed:
 
 ```text
 email: admin@example.com
@@ -56,4 +72,4 @@ password: Admin@123456
 role: admin
 ```
 
-Password được hash trong script `npm run db:seed`, không lưu plaintext vào database.
+The admin password is hashed by `npm run db:seed`; plaintext is not stored in the database.

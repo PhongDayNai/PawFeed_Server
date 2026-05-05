@@ -15,9 +15,11 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 - User registration, login, logout, refresh, current-user, password-change, and profile-update APIs.
 - Role-based admin routes.
 - Admin device provisioning APIs.
+- User device linking and ownership APIs.
 - Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
 - Device QR payload generation.
 - Pairing-code rotation.
+- User-facing device rename support.
 - Audit logs for admin device operations.
 - Docker and Docker Compose runtime for local development and deployment testing.
 
@@ -384,6 +386,61 @@ curl -X POST http://localhost:3000/api/admin/devices/feeder001/rotate-pairing-co
 ```
 
 Admin list and detail responses mask pairing codes and MQTT passwords. Device secrets are not returned by the admin list/detail, QR, or status endpoints.
+
+### User Devices
+
+Link a device to the authenticated user:
+
+```bash
+curl -X POST http://localhost:3000/api/devices/link \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "machineCode": "PF-ESP8266-001",
+    "pairingCode": "A8K2-91PQ"
+  }'
+```
+
+List linked devices:
+
+```bash
+curl http://localhost:3000/api/devices \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Get linked device detail:
+
+```bash
+curl http://localhost:3000/api/devices/feeder001 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Get latest device status:
+
+```bash
+curl http://localhost:3000/api/devices/feeder001/status \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Rename a linked device:
+
+```bash
+curl -X PATCH http://localhost:3000/api/devices/feeder001 \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "displayName": "Kitchen Feeder"
+  }'
+```
+
+Unlink a device:
+
+```bash
+curl -X POST http://localhost:3000/api/devices/feeder001/unlink \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Only the owner can list, read, rename, get status for, or unlink a linked device. A used pairing code remains used after unlinking until an admin rotates it.
 
 ## MQTT Broker Accounts
 
