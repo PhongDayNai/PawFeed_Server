@@ -1,7 +1,6 @@
 import { getPool } from '../config/db.js';
 import { notFoundError } from '../utils/errors.js';
-import { buildPaginationMeta, paginationFromQuery } from '../utils/pagination.js';
-import { writeAuditLog } from './audit.service.js';
+import { listAuditLogs, writeAuditLog } from './audit.service.js';
 import {
   SYSTEM_SETTING_KEYS,
   getEffectiveSystemSettings
@@ -24,21 +23,6 @@ function toSystemSetting(row) {
     description: row.description || null,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at)
-  };
-}
-
-function toAuditLog(row) {
-  return {
-    id: Number(row.id),
-    actorUserId: row.actor_user_id === null ? null : Number(row.actor_user_id),
-    actor: row.actor_email ? { id: Number(row.actor_user_id), email: row.actor_email, fullName: row.actor_full_name || null } : null,
-    action: row.action,
-    targetType: row.target_type || null,
-    targetId: row.target_id || null,
-    payload: safeJsonParse(row.payload, null),
-    clientIp: row.client_ip || null,
-    userAgent: row.user_agent || null,
-    createdAt: toIso(row.created_at)
   };
 }
 
@@ -151,40 +135,12 @@ export async function patchSystemSettings(input, context = {}) {
   }
 }
 
-export async function listAuditLogs(query = {}) {
-  const { page, limit, offset } = paginationFromQuery(query);
-  const conditions = [];
-  const values = [];
-
-  if (query.actorUserId) { conditions.push('a.actor_user_id = ?'); values.push(query.actorUserId); }
-  if (query.action) { conditions.push('a.action = ?'); values.push(query.action); }
-  if (query.targetType) { conditions.push('a.target_type = ?'); values.push(query.targetType); }
-  if (query.targetId) { conditions.push('a.target_id = ?'); values.push(query.targetId); }
-  if (query.from) { conditions.push('a.created_at >= ?'); values.push(query.from); }
-  if (query.to) { conditions.push('a.created_at <= ?'); values.push(query.to); }
-
-  const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const [countRows] = await getPool().execute(`SELECT COUNT(*) AS total FROM audit_logs a ${whereSql}`, values);
-  const [rows] = await getPool().execute(
-    `SELECT a.*, u.email AS actor_email, u.full_name AS actor_full_name
-     FROM audit_logs a
-     LEFT JOIN users u ON u.id = a.actor_user_id
-     ${whereSql}
-     ORDER BY a.created_at DESC, a.id DESC
-     LIMIT ${limit} OFFSET ${offset}`,
-    values
-  );
-
-  return {
-    logs: rows.map(toAuditLog),
-    meta: buildPaginationMeta({ page, limit, total: Number(countRows[0]?.total || 0) })
-  };
-}
-
 export async function getSystemSetting(key) {
   const [rows] = await getPool().execute('SELECT * FROM system_settings WHERE setting_key = ? LIMIT 1', [key]);
   if (!rows[0]) throw notFoundError('System setting was not found.', 'SYSTEM_SETTING_NOT_FOUND');
   return toSystemSetting(rows[0]);
 }
 
-export const __adminSystemInternals = { toSystemSetting, toAuditLog, buildChanges };
+export { listAuditLogs };
+
+export const __adminSystemInternals = { toSystemSetting, buildChanges };

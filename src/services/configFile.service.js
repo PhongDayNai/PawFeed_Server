@@ -379,7 +379,8 @@ async function persistGeneratedConfig({
   config,
   currentRow,
   feedingSchedule,
-  context
+  context,
+  regenerate = false
 }) {
   await connection.execute(
     `INSERT INTO device_current_configs (
@@ -486,7 +487,7 @@ async function persistGeneratedConfig({
 
   await writeAuditLog({
     actorUserId: userId,
-    action: 'user.device.config_file.generate',
+    action: regenerate ? 'user.device.config_file.regenerate' : 'user.device.config_file.generate',
     targetType: 'device',
     targetId: device.device_id,
     payload: {
@@ -498,7 +499,8 @@ async function persistGeneratedConfig({
       scheduleEnabled: feedingSchedule.enabled,
       scheduleItemCount: feedingSchedule.items.length,
       keepSetupApEnabled: config.keepSetupApEnabled,
-      reusedCurrentConfig: Boolean(currentRow)
+      reusedCurrentConfig: Boolean(currentRow),
+      regenerate
     },
     clientIp: context.clientIp,
     userAgent: context.userAgent,
@@ -595,7 +597,8 @@ async function generateConfigFileInternal({ deviceId, userId, input, context, re
       config,
       currentRow,
       feedingSchedule: preparedInput.feedingSchedule,
-      context
+      context,
+      regenerate
     });
 
     await connection.commit();

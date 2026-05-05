@@ -11,6 +11,7 @@ import {
 function requestContext(req) {
   return {
     actorUserId: req.user?.id || null,
+    actorRole: req.user?.role || null,
     clientIp: req.ip,
     userAgent: req.headers['user-agent'] || null
   };

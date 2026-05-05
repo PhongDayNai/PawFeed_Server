@@ -30,6 +30,7 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 - Full admin management APIs for dashboard, users, devices, MQTT servers, credentials, system settings, and audit logs.
 - Admin MQTT connection testing and safer MQTT credential/device secret rotation flows.
 - Runtime system settings for provider metadata, config defaults, and worker timeout values.
+- Audit log metadata, actor role tracking, secret masking, filtering, and CSV export.
 - Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
 - Device QR payload generation.
 - Pairing-code rotation.

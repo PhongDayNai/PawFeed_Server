@@ -108,7 +108,12 @@
     "runtime-settings",
     "provider-config",
     "system-settings-runtime",
-    "dynamic-timeouts"
+    "dynamic-timeouts",
+    "phase18",
+    "audit-log-hardening",
+    "audit-metadata",
+    "audit-export",
+    "sensitive-action-audit"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",

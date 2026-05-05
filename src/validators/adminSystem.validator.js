@@ -1,13 +1,26 @@
 import { z } from 'zod';
 import { optionalTrimmedString, paginationQuerySchema } from './common.validator.js';
 
+const auditRoleSchema = z.enum(['user', 'admin', 'technician']).optional();
+const auditTextFilter = z.string().trim().min(1).max(100).optional();
+const auditDateFilter = z.string().trim().min(1).max(40).optional();
+
 export const listAuditLogsQuerySchema = paginationQuerySchema.extend({
   actorUserId: z.coerce.number().int().positive().optional(),
-  action: z.string().trim().max(100).optional(),
-  targetType: z.string().trim().max(100).optional(),
-  targetId: z.string().trim().max(100).optional(),
-  from: z.string().trim().max(40).optional(),
-  to: z.string().trim().max(40).optional()
+  actorRole: auditRoleSchema,
+  actorEmail: z.string().trim().min(1).max(255).optional(),
+  action: auditTextFilter,
+  actionPrefix: auditTextFilter,
+  targetType: auditTextFilter,
+  targetId: auditTextFilter,
+  clientIp: z.string().trim().min(1).max(100).optional(),
+  q: z.string().trim().min(1).max(100).optional(),
+  from: auditDateFilter,
+  to: auditDateFilter
+}).strict();
+
+export const exportAuditLogsQuerySchema = listAuditLogsQuerySchema.extend({
+  limit: z.coerce.number().int().positive().max(5000).optional().default(1000)
 }).strict();
 
 const providerSchema = z.object({

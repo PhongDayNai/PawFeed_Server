@@ -44,11 +44,13 @@ import {
   updateAdminUserSchema
 } from '../validators/adminUser.validator.js';
 import {
+  exportAuditLogs,
   getAuditLogs,
   getSystemSettings,
   updateSystemSettings
 } from '../controllers/adminSystem.controller.js';
 import {
+  exportAuditLogsQuerySchema,
   listAuditLogsQuerySchema,
   patchSystemSettingsSchema
 } from '../validators/adminSystem.validator.js';
@@ -111,6 +113,7 @@ router.post('/admin/config-generations/:configId/revoke', validateParams(configG
 
 router.get('/admin/system-settings', asyncHandler(getSystemSettings));
 router.patch('/admin/system-settings', validateBody(patchSystemSettingsSchema), asyncHandler(updateSystemSettings));
+router.get('/admin/audit-logs/export', validateQuery(exportAuditLogsQuerySchema), asyncHandler(exportAuditLogs));
 router.get('/admin/audit-logs', validateQuery(listAuditLogsQuerySchema), asyncHandler(getAuditLogs));
 
 router.get('/admin/mqtt-servers', validateQuery(listMqttServersQuerySchema), asyncHandler(getMqttServers));
