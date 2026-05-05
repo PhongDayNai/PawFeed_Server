@@ -12,7 +12,7 @@ import accountRoutes from './routes/account.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import deviceRoutes from './routes/device.routes.js';
 import devRoutes from './routes/dev.routes.js';
-import { successResponse } from './utils/response.js';
+import { sendSuccess } from './utils/response.js';
 
 export function createApp() {
   const app = express();
@@ -30,13 +30,11 @@ export function createApp() {
   }
 
   app.get('/', (_req, res) => {
-    res.json(
-      successResponse({
-        service: env.appName,
-        version: env.appVersion,
-        message: 'Pet Feeder Server is running. Use GET /api/health for health check.'
-      })
-    );
+    sendSuccess(res, {
+      service: env.appName,
+      version: env.appVersion,
+      message: 'Pet Feeder Server is running. Use GET /api/health for health check.'
+    });
   });
 
   app.use('/api', apiRateLimiter);

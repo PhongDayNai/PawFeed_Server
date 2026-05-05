@@ -1,28 +1,13 @@
 import { z } from 'zod';
-
-const deviceIdRegex = /^[A-Za-z0-9_-]+$/;
-const machineCodeRegex = /^[A-Za-z0-9_-]+(?:-[A-Za-z0-9_-]+)*$/;
-const pairingCodeRegex = /^[A-Za-z0-9_-]+(?:-[A-Za-z0-9_-]+)*$/;
-
-const deviceStatusValues = [
-  'not_configured',
-  'linked',
-  'config_generated',
-  'configured',
-  'online',
-  'offline',
-  'disabled',
-  'revoked',
-  'unlinked'
-];
-
-function optionalTrimmedString(maxLength) {
-  return z
-    .string()
-    .trim()
-    .max(maxLength)
-    .optional();
-}
+import {
+  deviceIdParamSchema,
+  deviceIdRegex,
+  deviceStatusValues,
+  machineCodeRegex,
+  optionalTrimmedString,
+  paginationQuerySchema,
+  pairingCodeRegex
+} from './common.validator.js';
 
 export const createAdminDeviceSchema = z.object({
   deviceId: optionalTrimmedString(100)
@@ -45,16 +30,12 @@ export const createAdminDeviceSchema = z.object({
     .refine((value) => value === undefined || value.length >= 3, 'MQTT username must be at least 3 characters.'),
   mqttPassword: optionalTrimmedString(255)
     .refine((value) => value === undefined || value.length >= 8, 'MQTT password must be at least 8 characters.')
-});
+}).strict();
 
-export const adminDeviceParamsSchema = z.object({
-  deviceId: z.string().trim().min(1).max(100)
-});
+export const adminDeviceParamsSchema = deviceIdParamSchema;
 
-export const listAdminDevicesQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional().default(1),
-  limit: z.coerce.number().int().positive().max(100).optional().default(20),
+export const listAdminDevicesQuerySchema = paginationQuerySchema.extend({
   status: z.enum(deviceStatusValues).optional(),
   ownerUserId: z.coerce.number().int().positive().optional(),
-  q: z.string().trim().max(100).optional()
-});
+  q: z.string().trim().max(100, 'Search keyword must be at most 100 characters.').optional()
+}).strict();

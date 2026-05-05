@@ -7,4 +7,4 @@ export const updateProfileSchema = z.object({
     .min(1, 'Full name cannot be empty.')
     .max(255, 'Full name is too long.')
     .nullable()
-});
+}).strict();

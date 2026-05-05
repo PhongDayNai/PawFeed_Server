@@ -1,4 +1,4 @@
-import { successResponse } from '../utils/response.js';
+import { sendCreated, sendSuccess } from '../utils/response.js';
 import {
   changeUserPassword,
   loginUser,
@@ -8,37 +8,33 @@ import {
 
 export async function register(req, res) {
   const result = await registerUser(req.body);
-  return res.status(201).json(successResponse(result));
+  return sendCreated(res, result);
 }
 
 export async function login(req, res) {
   const result = await loginUser(req.body);
-  return res.json(successResponse(result));
+  return sendSuccess(res, result);
 }
 
 export async function me(req, res) {
-  return res.json(successResponse({ user: req.user }));
+  return sendSuccess(res, { user: req.user });
 }
 
 export async function refresh(req, res) {
   const result = await refreshAuthTokens(req.body.refreshToken);
-  return res.json(successResponse(result));
+  return sendSuccess(res, result);
 }
 
 export async function changePassword(req, res) {
   const user = await changeUserPassword(req.user.id, req.body);
-  return res.json(
-    successResponse({
-      user,
-      message: 'Password changed successfully.'
-    })
-  );
+  return sendSuccess(res, {
+    user,
+    message: 'Password changed successfully.'
+  });
 }
 
 export async function logout(_req, res) {
-  return res.json(
-    successResponse({
-      message: 'Logout accepted. Delete accessToken and refreshToken on the client.'
-    })
-  );
+  return sendSuccess(res, {
+    message: 'Logout accepted. Delete accessToken and refreshToken on the client.'
+  });
 }

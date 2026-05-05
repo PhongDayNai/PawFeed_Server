@@ -24,16 +24,16 @@ export const registerSchema = z.object({
   fullName: fullNameSchema,
   email: emailSchema,
   password: passwordSchema
-});
+}).strict();
 
 export const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, 'Password is required.').max(255, 'Password is too long.')
-});
+}).strict();
 
 export const refreshSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required.')
-});
+}).strict();
 
 export const changePasswordSchema = z
   .object({
@@ -41,6 +41,7 @@ export const changePasswordSchema = z
     newPassword: passwordSchema,
     confirmNewPassword: z.string().min(8).max(255).optional()
   })
+  .strict()
   .superRefine((value, ctx) => {
     if (value.confirmNewPassword !== undefined && value.newPassword !== value.confirmNewPassword) {
       ctx.addIssue({

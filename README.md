@@ -8,6 +8,7 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 
 - Express API runtime with JSON request parsing, CORS, Helmet, request logging, and rate limiting.
 - Standard JSON success and error responses.
+- Shared response helpers, pagination metadata, and structured validation errors.
 - Health check endpoint: `GET /api/health`.
 - MySQL connection pooling with `mysql2/promise`.
 - SQL migration, seed, reset, and status scripts.
@@ -469,6 +470,10 @@ Run syntax checks:
 
 ```bash
 npm run check
+```
+
+
+```bash
 ```
 
 Run a health check against a running server:

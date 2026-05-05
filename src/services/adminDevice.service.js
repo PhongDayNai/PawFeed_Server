@@ -19,6 +19,7 @@ import {
   normalizeMachineCode,
   normalizePairingCode
 } from '../utils/normalize.js';
+import { buildPaginationMeta, paginationFromQuery } from '../utils/pagination.js';
 import { writeAuditLog } from './audit.service.js';
 
 const deviceStatusSet = new Set([
@@ -354,9 +355,7 @@ export async function createAdminDevice(input, context) {
 
 export async function listAdminDevices(query = {}) {
   const pool = getPool();
-  const page = Math.max(Number(query.page || 1), 1);
-  const limit = Math.min(Math.max(Number(query.limit || 20), 1), 100);
-  const offset = (page - 1) * limit;
+  const { page, limit, offset } = paginationFromQuery(query);
 
   const where = [];
   const values = [];
@@ -398,12 +397,7 @@ export async function listAdminDevices(query = {}) {
   const total = Number(countRows[0]?.total || 0);
   return {
     devices: rows.map((row) => toAdminDevice(row)),
-    meta: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit)
-    }
+    meta: buildPaginationMeta({ page, limit, total })
   };
 }
 

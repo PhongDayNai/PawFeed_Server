@@ -1,10 +1,8 @@
-import { successResponse } from '../utils/response.js';
+import { sendSuccess } from '../utils/response.js';
 
 export async function adminPing(req, res) {
-  return res.json(
-    successResponse({
-      message: 'Admin role middleware works.',
-      user: req.user
-    })
-  );
+  return sendSuccess(res, {
+    message: 'Admin role middleware works.',
+    user: req.user
+  });
 }

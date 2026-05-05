@@ -1,28 +1,60 @@
 import { env } from '../config/env.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 import { errorResponse } from '../utils/response.js';
 
-export function errorHandler(error, req, res, _next) {
-  const statusCode = Number.isInteger(error.statusCode) ? error.statusCode : 500;
-  const code = error.code || (statusCode === 500 ? 'INTERNAL_SERVER_ERROR' : 'REQUEST_ERROR');
-  const message = statusCode === 500 && env.isProduction
-    ? 'Internal server error.'
-    : error.message || 'Internal server error.';
+function normalizeError(error) {
+  if (error?.type === 'entity.parse.failed') {
+    return {
+      statusCode: 400,
+      code: ERROR_CODES.INVALID_JSON,
+      message: 'Request body must be valid JSON.',
+      details: undefined
+    };
+  }
 
-  if (statusCode >= 500) {
+  if (error?.type === 'entity.too.large' || error?.status === 413) {
+    return {
+      statusCode: 413,
+      code: ERROR_CODES.PAYLOAD_TOO_LARGE,
+      message: 'Request payload is too large.',
+      details: undefined
+    };
+  }
+
+  const statusCode = Number.isInteger(error?.statusCode)
+    ? error.statusCode
+    : Number.isInteger(error?.status)
+      ? error.status
+      : 500;
+
+  return {
+    statusCode,
+    code: error?.code || (statusCode === 500 ? ERROR_CODES.INTERNAL_SERVER_ERROR : ERROR_CODES.REQUEST_ERROR),
+    message: statusCode === 500 && env.isProduction
+      ? 'Internal server error.'
+      : error?.message || 'Internal server error.',
+    details: error?.details
+  };
+}
+
+export function errorHandler(error, req, res, _next) {
+  const normalized = normalizeError(error);
+
+  if (normalized.statusCode >= 500) {
     console.error('[server-error]', {
-      code,
-      message: error.message,
+      code: normalized.code,
+      message: error?.message,
       path: req.originalUrl,
       method: req.method,
-      stack: env.isProduction ? undefined : error.stack
+      stack: env.isProduction ? undefined : error?.stack
     });
   }
 
-  res.status(statusCode).json(
+  return res.status(normalized.statusCode).json(
     errorResponse({
-      code,
-      message,
-      details: error.details
+      code: normalized.code,
+      message: normalized.message,
+      details: normalized.details
     })
   );
 }
