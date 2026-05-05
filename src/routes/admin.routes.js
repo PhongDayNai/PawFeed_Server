@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { validateBody, validateParams, validateQuery } from '../middleware/validate.js';
 import { adminPing } from '../controllers/admin.controller.js';
+import { listAdminDeviceCommands } from '../controllers/command.controller.js';
 import {
   createDevice,
   getDevice,
@@ -17,12 +18,14 @@ import {
   createAdminDeviceSchema,
   listAdminDevicesQuerySchema
 } from '../validators/adminDevice.validator.js';
+import { listAdminCommandsQuerySchema } from '../validators/command.validator.js';
 
 const router = Router();
 
 router.use('/admin', authenticate, requireRole(['admin']));
 
 router.get('/admin/ping', asyncHandler(adminPing));
+router.get('/admin/device-commands', validateQuery(listAdminCommandsQuerySchema), asyncHandler(listAdminDeviceCommands));
 router.post('/admin/devices', validateBody(createAdminDeviceSchema), asyncHandler(createDevice));
 router.get('/admin/devices', validateQuery(listAdminDevicesQuerySchema), asyncHandler(listDevices));
 router.get('/admin/devices/:deviceId', validateParams(adminDeviceParamsSchema), asyncHandler(getDevice));

@@ -31,6 +31,16 @@ import { saveCurrentConfigSchema } from '../validators/config.validator.js';
 import { saveScheduleSchema } from '../validators/schedule.validator.js';
 import { createConfigFileSchema, configFileQuerySchema } from '../validators/configFile.validator.js';
 import { paginationQuerySchema } from '../validators/pagination.validator.js';
+import {
+  feedNow,
+  getCommandStatus,
+  listCommands
+} from '../controllers/command.controller.js';
+import {
+  commandParamsSchema,
+  feedNowBodySchema,
+  listCommandsQuerySchema
+} from '../validators/command.validator.js';
 
 const router = Router();
 
@@ -72,6 +82,25 @@ router.post(
   validateQuery(configFileQuerySchema),
   asyncHandler(regenerateConfigFileController)
 );
+
+router.post(
+  '/devices/:deviceId/commands/feed-now',
+  validateParams(deviceParamsSchema),
+  validateBody(feedNowBodySchema),
+  asyncHandler(feedNow)
+);
+router.get(
+  '/devices/:deviceId/commands',
+  validateParams(deviceParamsSchema),
+  validateQuery(listCommandsQuerySchema),
+  asyncHandler(listCommands)
+);
+router.get(
+  '/devices/:deviceId/commands/:requestId',
+  validateParams(commandParamsSchema),
+  asyncHandler(getCommandStatus)
+);
+
 router.get(
   '/devices/:deviceId/config-generations',
   validateParams(deviceParamsSchema),

@@ -23,6 +23,7 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 - Machine compatibility tooling for config-file signing payload inspection and comparison.
 - Optional MQTT connection service with default subscriptions for device online, state, telemetry, event, and ack topics.
 - MQTT inbound handlers that update device status, telemetry timestamps, events, command acknowledgements, config apply status, and feeding history.
+- Remote feed-now command APIs with user command status lookup and admin command history filtering.
 - Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
 - Device QR payload generation.
 - Pairing-code rotation.
