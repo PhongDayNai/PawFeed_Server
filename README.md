@@ -32,6 +32,8 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 - Runtime system settings for provider metadata, config defaults, and worker timeout values.
 - Audit log metadata, actor role tracking, secret masking, filtering, and CSV export.
 - Security hardening with request IDs, Helmet headers, optional HTTPS enforcement, production startup checks, prototype pollution protection, secret redaction, and tighter rate limits for sensitive endpoints.
+- Runtime endpoint catalog through Express routes and deployment assets.
+- Static specification compliance checklist and generated compliance reports for source, routes, migrations, and runtime assets.
 - Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
 - Device QR payload generation.
 - Pairing-code rotation.
@@ -262,6 +264,7 @@ The backend stores MQTT credentials in MySQL. It does not automatically create u
 
 ## API Endpoints
 
+The Express route files under `src/routes/` are the source of truth for API endpoints.
 
 ### Health
 
@@ -648,15 +651,10 @@ Run a health check against a running server:
 npm run health
 ```
 
+Validate runtime artifacts:
 
 ```bash
 npm run spec:check
-```
-
-
-Import the full collection and local environment:
-
-```text
 ```
 
 ## Deployment Notes

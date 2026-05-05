@@ -390,6 +390,11 @@ checkSnippets(checks, allFiles, {
 });
 
 checkSnippets(checks, allFiles, {
+  category: 'runtime-assets',
+  id: 'runtime.readme-deploy',
+  label: 'README and deployment assets exist',
+  files: ['README.md', 'deploy/docker-compose.dev.yml'],
+  snippets: ['Pet Feeder', 'Docker Compose', 'deploy']
 });
 
 const failed = checks.filter((check) => check.status === 'fail');
@@ -438,6 +443,7 @@ const mdLines = [
   '',
   '## Scope',
   '',
+  '- This report checks source code, migrations, routes, config signing logic, security guards and deployment assets.',
   '- Real end-to-end validation still needs MySQL/MariaDB, MQTT broker and ESP8266 Machine hardware.',
   ''
 ];
