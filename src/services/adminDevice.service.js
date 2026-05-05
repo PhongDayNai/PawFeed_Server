@@ -114,7 +114,6 @@ function toAdminDevice(row, { includeQrPayload = false, includePairingCode = fal
             host: row.mqtt_host,
             mqttPort: Number(row.mqtt_port),
             tlsPort: Number(row.tls_port),
-            websocketPort: row.websocket_port === null ? null : Number(row.websocket_port),
             useTls: toBoolean(row.mqtt_use_tls)
           }
         }
@@ -177,7 +176,6 @@ function baseDeviceSelect() {
       ms.host AS mqtt_host,
       ms.mqtt_port,
       ms.tls_port,
-      ms.websocket_port,
       ms.use_tls AS mqtt_use_tls
     FROM devices d
     LEFT JOIN users u ON u.id = d.owner_user_id
@@ -199,7 +197,7 @@ export async function findAdminDeviceByDeviceId(deviceId, connection = null) {
 async function getActiveMqttServer({ mqttServerId = null, connection }) {
   if (mqttServerId) {
     const [rows] = await connection.execute(
-      `SELECT id, name, host, mqtt_port, tls_port, websocket_port, use_tls
+      `SELECT id, name, host, mqtt_port, tls_port, use_tls
        FROM mqtt_servers
        WHERE id = ? AND is_active = TRUE
        LIMIT 1`,
@@ -212,7 +210,7 @@ async function getActiveMqttServer({ mqttServerId = null, connection }) {
   }
 
   const [rows] = await connection.execute(
-    `SELECT id, name, host, mqtt_port, tls_port, websocket_port, use_tls
+    `SELECT id, name, host, mqtt_port, tls_port, use_tls
      FROM mqtt_servers
      WHERE is_active = TRUE
      ORDER BY id ASC
@@ -390,8 +388,8 @@ export async function listAdminDevices(query = {}) {
     `${baseDeviceSelect()}
      ${whereSql}
      ORDER BY d.created_at DESC, d.id DESC
-     LIMIT ${limit} OFFSET ${offset}`,
-    values
+     LIMIT ? OFFSET ?`,
+    [...values, limit, offset]
   );
 
   const total = Number(countRows[0]?.total || 0);

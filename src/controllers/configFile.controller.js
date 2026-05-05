@@ -24,7 +24,7 @@ function sendConfigDownload(res, result) {
       'X-Config-Expires-At': String(result.expiresAt),
       'Content-Length': String(result.contentLength)
     })
-    .send(Buffer.from(result.content, 'utf8'));
+    .send(result.content);
 }
 
 function toJsonModeResponse(result) {

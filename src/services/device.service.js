@@ -168,7 +168,6 @@ export async function linkDeviceToUser(input, context) {
   const userId = context.actorUserId;
   const machineCode = normalizeMachineCode(input.machineCode);
   const pairingCode = normalizePairingCode(input.pairingCode);
-  let shouldRollback = false;
 
   if (!machineCode) {
     throw badRequestError('Machine code is required.', 'MACHINE_CODE_REQUIRED');
@@ -180,37 +179,34 @@ export async function linkDeviceToUser(input, context) {
 
   try {
     await connection.beginTransaction();
-    shouldRollback = true;
-
-    async function failWithHistory(history, error) {
-      await insertLinkHistory({
-        userId,
-        pairingCode,
-        clientIp: context.clientIp,
-        userAgent: context.userAgent,
-        connection,
-        ...history
-      });
-      await connection.commit();
-      shouldRollback = false;
-      throw error;
-    }
 
     const device = await findDeviceForLink(machineCode, connection);
 
     if (!device) {
-      await failWithHistory({
+      await insertLinkHistory({
+        userId,
         machineCode,
-        action: 'failed_not_found'
-      }, notFoundError('Machine code was not found.', 'MACHINE_CODE_NOT_FOUND'));
+        pairingCode,
+        action: 'failed_not_found',
+        clientIp: context.clientIp,
+        userAgent: context.userAgent,
+        connection
+      });
+      throw notFoundError('Không tìm thấy mã máy này.', 'MACHINE_CODE_NOT_FOUND');
     }
 
     if (blockedDeviceStatuses.has(device.status)) {
-      await failWithHistory({
+      await insertLinkHistory({
         devicePk: device.id,
+        userId,
         machineCode: device.machine_code,
-        action: `failed_${device.status}`
-      }, forbiddenError('Device is not available for linking.', 'DEVICE_NOT_AVAILABLE'));
+        pairingCode,
+        action: `failed_${device.status}`,
+        clientIp: context.clientIp,
+        userAgent: context.userAgent,
+        connection
+      });
+      throw forbiddenError('Device is not available for linking.', 'DEVICE_NOT_AVAILABLE');
     }
 
     if (device.owner_user_id && Number(device.owner_user_id) === Number(userId)) {
@@ -225,7 +221,6 @@ export async function linkDeviceToUser(input, context) {
         connection
       });
       await connection.commit();
-      shouldRollback = false;
       const row = await findOwnedDeviceByDeviceId(device.device_id, userId);
       return {
         device: toUserDeviceDetail(row),
@@ -235,27 +230,45 @@ export async function linkDeviceToUser(input, context) {
     }
 
     if (device.owner_user_id) {
-      await failWithHistory({
+      await insertLinkHistory({
         devicePk: device.id,
+        userId,
         machineCode: device.machine_code,
-        action: 'failed_already_linked'
-      }, conflictError('Device is already linked to another account.', 'DEVICE_ALREADY_LINKED'));
+        pairingCode,
+        action: 'failed_already_linked',
+        clientIp: context.clientIp,
+        userAgent: context.userAgent,
+        connection
+      });
+      throw conflictError('Thiết bị này đã được liên kết với tài khoản khác.', 'DEVICE_ALREADY_LINKED');
     }
 
     if (!device.claim_code || !isSamePairingCode(pairingCode, device.claim_code)) {
-      await failWithHistory({
+      await insertLinkHistory({
         devicePk: device.id,
+        userId,
         machineCode: device.machine_code,
-        action: 'failed_invalid_pairing_code'
-      }, badRequestError('Pairing code is invalid.', 'INVALID_PAIRING_CODE'));
+        pairingCode,
+        action: 'failed_invalid_pairing_code',
+        clientIp: context.clientIp,
+        userAgent: context.userAgent,
+        connection
+      });
+      throw badRequestError('Mã ghép nối không đúng.', 'INVALID_PAIRING_CODE');
     }
 
     if (device.claim_code_used_at) {
-      await failWithHistory({
+      await insertLinkHistory({
         devicePk: device.id,
+        userId,
         machineCode: device.machine_code,
-        action: 'failed_pairing_code_used'
-      }, conflictError('Pairing code has already been used.', 'PAIRING_CODE_ALREADY_USED'));
+        pairingCode,
+        action: 'failed_pairing_code_used',
+        clientIp: context.clientIp,
+        userAgent: context.userAgent,
+        connection
+      });
+      throw conflictError('Mã ghép nối này đã được sử dụng.', 'PAIRING_CODE_ALREADY_USED');
     }
 
     await connection.execute(
@@ -291,7 +304,6 @@ export async function linkDeviceToUser(input, context) {
     });
 
     await connection.commit();
-    shouldRollback = false;
 
     const linkedRow = await findOwnedDeviceByDeviceId(device.device_id, userId);
     return {
@@ -299,9 +311,7 @@ export async function linkDeviceToUser(input, context) {
       alreadyLinked: false
     };
   } catch (error) {
-    if (shouldRollback) {
-      await connection.rollback();
-    }
+    await connection.rollback();
     throw error;
   } finally {
     connection.release();

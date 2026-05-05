@@ -659,8 +659,8 @@ export async function listConfigGenerations(deviceId, userId, { page = 1, limit 
   const device = await getOwnedDeviceForConfig(deviceId, userId, getPool(), false);
   requireDeviceAvailable(device);
 
-  const normalizedPage = Math.max(1, Number.parseInt(page, 10) || 1);
-  const normalizedLimit = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 20));
+  const normalizedPage = Number(page || 1);
+  const normalizedLimit = Number(limit || 20);
   const offset = (normalizedPage - 1) * normalizedLimit;
 
   const [[countRow]] = await getPool().execute(
@@ -688,8 +688,8 @@ export async function listConfigGenerations(deviceId, userId, { page = 1, limit 
      FROM device_config_generations
      WHERE device_id = ?
      ORDER BY config_version DESC, id DESC
-     LIMIT ${normalizedLimit} OFFSET ${offset}`,
-    [device.id]
+     LIMIT ? OFFSET ?`,
+    [device.id, normalizedLimit, offset]
   );
 
   return {
@@ -719,7 +719,7 @@ export async function listConfigGenerations(deviceId, userId, { page = 1, limit 
   };
 }
 
-export const __configFileInternals = {
+export const __phase7Internals = {
   buildSigningPayloadV3,
   signConfigPayload,
   normalizeFeedingSchedule,

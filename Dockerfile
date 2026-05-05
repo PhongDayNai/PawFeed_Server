@@ -20,6 +20,7 @@ COPY package*.json ./
 COPY src ./src
 COPY scripts ./scripts
 COPY sql ./sql
+COPY fixtures ./fixtures
 
 USER app
 

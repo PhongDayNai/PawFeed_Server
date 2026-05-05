@@ -282,13 +282,8 @@ export async function saveDeviceSchedule(deviceId, userId, input, context) {
     const device = await assertOwnedDevice(deviceId, userId, connection);
     assertDeviceCanSaveConfig(device);
 
-    const currentRow = await getCurrentConfigRow(device.id, connection, true);
-    const { scheduleRow: existingScheduleRow } = await getScheduleRows(device.id, connection, true);
-    const timezone = normalizeTimezone(input.timezone, currentRow?.timezone || existingScheduleRow?.timezone || DEFAULT_TIMEZONE);
-    const timezoneOffsetSec = normalizeTimezoneOffset(
-      input.timezoneOffsetSec,
-      currentRow?.timezone_offset_sec ?? existingScheduleRow?.timezone_offset_sec ?? DEFAULT_TIMEZONE_OFFSET_SEC
-    );
+    const timezone = normalizeTimezone(input.timezone, DEFAULT_TIMEZONE);
+    const timezoneOffsetSec = normalizeTimezoneOffset(input.timezoneOffsetSec, DEFAULT_TIMEZONE_OFFSET_SEC);
     const enabled = input.enabled !== false;
     const normalizedItems = normalizeScheduleItems(input.items || []);
     const scheduleJson = scheduleJsonFromInput({ enabled, items: normalizedItems });
@@ -440,7 +435,7 @@ export async function getDeviceScheduleApplyStatus(deviceId, userId) {
   };
 }
 
-export const __currentConfigInternals = {
+export const __phase6Internals = {
   normalizeScheduleItems,
   scheduleJsonFromInput,
   toScheduleResponse,

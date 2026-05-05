@@ -29,7 +29,7 @@ import {
 } from '../validators/device.validator.js';
 import { saveCurrentConfigSchema } from '../validators/config.validator.js';
 import { saveScheduleSchema } from '../validators/schedule.validator.js';
-import { configFileQuerySchema, createConfigFileSchema } from '../validators/configFile.validator.js';
+import { createConfigFileSchema, configFileQuerySchema } from '../validators/configFile.validator.js';
 import { paginationQuerySchema } from '../validators/pagination.validator.js';
 
 const router = Router();
@@ -58,6 +58,7 @@ router.get(
   validateParams(deviceParamsSchema),
   asyncHandler(getScheduleApplyStatus)
 );
+
 router.post(
   '/devices/:deviceId/config-file',
   validateParams(deviceParamsSchema),

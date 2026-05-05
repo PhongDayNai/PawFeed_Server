@@ -1,0 +1,40 @@
+{
+  "deviceSecret": "CHANGE_ME_DEVICE_SECRET",
+  "config": {
+    "version": 3,
+    "configId": "cfg_feeder001_phase8_compat",
+    "configVersion": 1,
+    "issuedAt": 1777790000,
+    "expiresAt": 1777791800,
+    "machineCode": "PF-ESP8266-001",
+    "deviceId": "feeder001",
+    "wifiSsid": "Home_Wifi_5G",
+    "wifiPass": "12345678",
+    "mqttHost": "192.168.1.88",
+    "mqttPort": 1883,
+    "mqttUseTls": false,
+    "mqttUser": "feeder001",
+    "mqttPass": "random_device_password",
+    "timezone": "Asia/Bangkok",
+    "timezoneOffsetSec": 25200,
+    "keepSetupApEnabled": false,
+    "feedingSchedule": {
+      "enabled": true,
+      "items": [
+        {
+          "id": "meal_1",
+          "time": "07:00",
+          "openDurationMs": 1200,
+          "enabled": true
+        }
+      ]
+    },
+    "provider": {
+      "name": "Phong Dương Hùng",
+      "brand": "Pet Feeder IoT",
+      "website": "https://your-domain.com",
+      "contact": "your-email@example.com",
+      "note": "Thiết bị và file cấu hình được cung cấp bởi Phong Dương Hùng."
+    }
+  }
+}

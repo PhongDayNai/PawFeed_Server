@@ -20,6 +20,7 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 - User-managed current device configuration APIs for Wi-Fi, location, timezone, and setup AP settings.
 - Feeding schedule storage with strict time validation, duration limits, and apply-status reporting.
 - HMAC-signed device config file generation and generation history APIs.
+- Machine compatibility tooling for config-file signing payload inspection and comparison.
 - Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
 - Device QR payload generation.
 - Pairing-code rotation.
@@ -148,6 +149,11 @@ Check container status and the API health endpoint:
 ```bash
 docker compose ps
 curl http://localhost:3000/api/health
+```
+
+
+```bash
+npm run phase8:generate-sample
 ```
 
 Stop the containers:
