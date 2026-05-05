@@ -48,7 +48,9 @@ export const env = {
     ttlSec: parseInteger(process.env.CONFIG_FILE_TTL_SEC, 1800),
     defaultTimezone: process.env.DEFAULT_TIMEZONE || 'Asia/Bangkok',
     defaultTimezoneOffsetSec: parseInteger(process.env.DEFAULT_TIMEZONE_OFFSET_SEC, 25200),
-    defaultKeepSetupApEnabled: parseBoolean(process.env.DEFAULT_KEEP_SETUP_AP_ENABLED, false)
+    defaultKeepSetupApEnabled: parseBoolean(process.env.DEFAULT_KEEP_SETUP_AP_ENABLED, false),
+    defaultMqttUseTls: parseBoolean(process.env.DEFAULT_MQTT_USE_TLS, false),
+    allowDemoKeepSetupAp: parseBoolean(process.env.ALLOW_DEMO_KEEP_SETUP_AP, true)
   },
 
   provider: {

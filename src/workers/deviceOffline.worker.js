@@ -1,5 +1,6 @@
 import { getPool } from '../config/db.js';
 import { env } from '../config/env.js';
+import { getWorkerTimeoutSettings } from '../services/systemSettings.service.js';
 
 function secondsAgo(seconds, now = new Date()) {
   return new Date(now.getTime() - seconds * 1000);
@@ -9,14 +10,16 @@ function rowCount(result) {
   return Number(result?.affectedRows || 0);
 }
 
-export function getDeviceOfflineThreshold(now = new Date()) {
-  return secondsAgo(env.workers.deviceOnlineTtlSec, now);
+export async function getDeviceOfflineThreshold(now = new Date(), executor = undefined) {
+  const settings = executor ? await getWorkerTimeoutSettings(executor) : env.workers;
+  return secondsAgo(settings.deviceOnlineTtlSec, now);
 }
 
 export async function runDeviceOfflineCheck(options = {}) {
   const executor = options.executor || getPool();
   const now = options.now || new Date();
-  const onlineTtlSec = options.deviceOnlineTtlSec ?? env.workers.deviceOnlineTtlSec;
+  const settings = await getWorkerTimeoutSettings(executor);
+  const onlineTtlSec = options.deviceOnlineTtlSec ?? settings.deviceOnlineTtlSec;
   const threshold = secondsAgo(onlineTtlSec, now);
 
   const [latestStatusResult] = await executor.execute(

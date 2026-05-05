@@ -1,5 +1,6 @@
 import { getPool } from '../config/db.js';
 import { env } from '../config/env.js';
+import { getWorkerTimeoutSettings } from '../services/systemSettings.service.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 
 const ACK_TIMEOUT_MESSAGE = 'Command was not acknowledged before timeout.';
@@ -13,18 +14,20 @@ function rowCount(result) {
   return Number(result?.affectedRows || 0);
 }
 
-export function getCommandTimeoutThresholds(now = new Date()) {
+export async function getCommandTimeoutThresholds(now = new Date(), executor = undefined) {
+  const timeouts = executor ? await getWorkerTimeoutSettings(executor) : env.workers;
   return {
-    ackThreshold: secondsAgo(env.workers.commandAckTimeoutSec, now),
-    completeThreshold: secondsAgo(env.workers.commandCompleteTimeoutSec, now)
+    ackThreshold: secondsAgo(timeouts.commandAckTimeoutSec, now),
+    completeThreshold: secondsAgo(timeouts.commandCompleteTimeoutSec, now)
   };
 }
 
 export async function runCommandTimeoutCheck(options = {}) {
   const executor = options.executor || getPool();
   const now = options.now || new Date();
-  const ackTimeoutSec = options.commandAckTimeoutSec ?? env.workers.commandAckTimeoutSec;
-  const completeTimeoutSec = options.commandCompleteTimeoutSec ?? env.workers.commandCompleteTimeoutSec;
+  const settings = await getWorkerTimeoutSettings(executor);
+  const ackTimeoutSec = options.commandAckTimeoutSec ?? settings.commandAckTimeoutSec;
+  const completeTimeoutSec = options.commandCompleteTimeoutSec ?? settings.commandCompleteTimeoutSec;
   const ackThreshold = secondsAgo(ackTimeoutSec, now);
   const completeThreshold = secondsAgo(completeTimeoutSec, now);
 

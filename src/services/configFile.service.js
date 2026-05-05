@@ -1,15 +1,13 @@
 import crypto from 'crypto';
 import { customAlphabet } from 'nanoid';
-import { env } from '../config/env.js';
 import { getPool } from '../config/db.js';
 import { badRequestError, notFoundError } from '../utils/errors.js';
 import { emptyToNull, normalizeDeviceId } from '../utils/normalize.js';
 import { writeAuditLog } from './audit.service.js';
+import { getProviderSettings, getServerDefaultSettings } from './systemSettings.service.js';
 
 const randomId = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 8);
 const CONFIG_SCHEMA_VERSION = 3;
-const DEFAULT_TIMEZONE = 'Asia/Bangkok';
-const DEFAULT_TIMEZONE_OFFSET_SEC = 25200;
 const blockedStatuses = new Set(['disabled', 'revoked']);
 
 function toBoolean(value) {
@@ -45,11 +43,11 @@ function createConfigId(deviceId, now = new Date()) {
   return `cfg_${deviceId}_${yyyymmddhhmmss(now)}_${randomId()}`;
 }
 
-function normalizeTimezone(value, fallback = DEFAULT_TIMEZONE) {
+function normalizeTimezone(value, fallback = 'Asia/Bangkok') {
   return emptyToNull(value) || fallback;
 }
 
-function normalizeTimezoneOffset(value, fallback = DEFAULT_TIMEZONE_OFFSET_SEC) {
+function normalizeTimezoneOffset(value, fallback = 25200) {
   if (value === undefined || value === null || value === '') return Number(fallback);
   return Number(value);
 }
@@ -64,14 +62,6 @@ function parseJsonSetting(value, fallback) {
   }
 }
 
-async function getJsonSetting(key, fallback, executor) {
-  const [rows] = await executor.execute(
-    `SELECT setting_value FROM system_settings WHERE setting_key = ? LIMIT 1`,
-    [key]
-  );
-  return parseJsonSetting(rows[0]?.setting_value, fallback);
-}
-
 function normalizeProvider(provider = {}) {
   return {
     name: provider.name ?? '',
@@ -80,22 +70,6 @@ function normalizeProvider(provider = {}) {
     contact: provider.contact ?? '',
     note: provider.note ?? ''
   };
-}
-
-async function getProvider(executor) {
-  const setting = await getJsonSetting('provider', env.provider, executor);
-  return normalizeProvider({ ...env.provider, ...setting });
-}
-
-async function getServerDefaults(executor) {
-  const fallback = {
-    configFileTtlSec: env.configFile.ttlSec,
-    defaultTimezone: env.configFile.defaultTimezone,
-    defaultTimezoneOffsetSec: env.configFile.defaultTimezoneOffsetSec,
-    defaultKeepSetupApEnabled: env.configFile.defaultKeepSetupApEnabled
-  };
-  const setting = await getJsonSetting('server_defaults', fallback, executor);
-  return { ...fallback, ...setting };
 }
 
 function normalizeScheduleItems(items = []) {
@@ -582,8 +556,8 @@ async function generateConfigFileInternal({ deviceId, userId, input, context, re
       throw badRequestError('Active MQTT credential/server was not found for this device.', 'MQTT_CREDENTIAL_NOT_FOUND');
     }
 
-    const defaults = await getServerDefaults(connection);
-    const provider = await getProvider(connection);
+    const defaults = await getServerDefaultSettings(connection);
+    const provider = await getProviderSettings(connection);
     const savedSchedule = await getSavedSchedule(device.id, currentRow, connection);
     const preparedInput = regenerate
       ? prepareInputFromCurrent(currentRow, savedSchedule, defaults)
@@ -593,7 +567,7 @@ async function generateConfigFileInternal({ deviceId, userId, input, context, re
     const configVersion = computeNextConfigVersion(device, currentRow, latestGenerationVersion);
     const now = new Date();
     const issuedAt = epochSeconds(now);
-    const ttlSec = Number(defaults.configFileTtlSec || env.configFile.ttlSec || 1800);
+    const ttlSec = Number(defaults.configFileTtlSec || 1800);
     const expiresAt = issuedAt + ttlSec;
     const configId = createConfigId(device.device_id, now);
 

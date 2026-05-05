@@ -29,7 +29,21 @@ async function buildSeedVariables() {
     DEMO_PAIRING_CODE: escapeSqlValue(env.seed.demoPairingCode),
     DEMO_DEVICE_SECRET: escapeSqlValue(env.seed.demoDeviceSecret),
     DEMO_MQTT_USERNAME: escapeSqlValue(env.seed.demoMqttUsername),
-    DEMO_MQTT_PASSWORD: escapeSqlValue(env.seed.demoMqttPassword)
+    DEMO_MQTT_PASSWORD: escapeSqlValue(env.seed.demoMqttPassword),
+    CONFIG_FILE_TTL_SEC: String(env.configFile.ttlSec),
+    DEFAULT_TIMEZONE: escapeSqlValue(env.configFile.defaultTimezone),
+    DEFAULT_TIMEZONE_OFFSET_SEC: String(env.configFile.defaultTimezoneOffsetSec),
+    DEFAULT_KEEP_SETUP_AP_ENABLED: boolToSql(env.configFile.defaultKeepSetupApEnabled),
+    DEFAULT_MQTT_USE_TLS: boolToSql(env.configFile.defaultMqttUseTls),
+    ALLOW_DEMO_KEEP_SETUP_AP: boolToSql(env.configFile.allowDemoKeepSetupAp),
+    DEVICE_ONLINE_TTL_SEC: String(env.workers.deviceOnlineTtlSec),
+    COMMAND_ACK_TIMEOUT_SEC: String(env.workers.commandAckTimeoutSec),
+    COMMAND_COMPLETE_TIMEOUT_SEC: String(env.workers.commandCompleteTimeoutSec),
+    PROVIDER_NAME: escapeSqlValue(env.provider.name),
+    PROVIDER_BRAND: escapeSqlValue(env.provider.brand),
+    PROVIDER_WEBSITE: escapeSqlValue(env.provider.website),
+    PROVIDER_CONTACT: escapeSqlValue(env.provider.contact),
+    PROVIDER_NOTE: escapeSqlValue(env.provider.note)
   };
 }
 

@@ -6,13 +6,13 @@ function requestContext(req) {
 }
 
 export async function getSystemSettings(req, res) {
-  const settings = await listSystemSettings();
-  return sendSuccess(res, { settings });
+  const result = await listSystemSettings();
+  return sendSuccess(res, result);
 }
 
 export async function updateSystemSettings(req, res) {
-  const settings = await patchSystemSettings(req.body, requestContext(req));
-  return sendSuccess(res, { settings });
+  const result = await patchSystemSettings(req.body, requestContext(req));
+  return sendSuccess(res, result);
 }
 
 export async function getAuditLogs(req, res) {

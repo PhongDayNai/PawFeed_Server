@@ -3,9 +3,10 @@ import { badRequestError } from '../utils/errors.js';
 import { emptyToNull, normalizeDeviceId } from '../utils/normalize.js';
 import { assertOwnedDevice } from './device.service.js';
 import { writeAuditLog } from './audit.service.js';
+import { getServerDefaultSettings } from './systemSettings.service.js';
 
-const DEFAULT_TIMEZONE = 'Asia/Bangkok';
-const DEFAULT_TIMEZONE_OFFSET_SEC = 25200;
+const FALLBACK_TIMEZONE = 'Asia/Bangkok';
+const FALLBACK_TIMEZONE_OFFSET_SEC = 25200;
 
 function toBoolean(value) {
   return Boolean(Number(value));
@@ -15,12 +16,12 @@ function toIso(value) {
   return value ? new Date(value).toISOString() : null;
 }
 
-function normalizeTimezone(value, fallback = DEFAULT_TIMEZONE) {
+function normalizeTimezone(value, fallback = FALLBACK_TIMEZONE) {
   const normalized = emptyToNull(value);
   return normalized || fallback;
 }
 
-function normalizeTimezoneOffset(value, fallback = DEFAULT_TIMEZONE_OFFSET_SEC) {
+function normalizeTimezoneOffset(value, fallback = FALLBACK_TIMEZONE_OFFSET_SEC) {
   if (value === undefined || value === null || value === '') return fallback;
   return Number(value);
 }
@@ -49,10 +50,10 @@ function scheduleJsonFromInput(schedule) {
   };
 }
 
-function toScheduleResponse(scheduleRow, itemRows = [], deviceId = undefined) {
+function toScheduleResponse(scheduleRow, itemRows = [], deviceId = undefined, defaults = {}) {
   const enabled = scheduleRow ? toBoolean(scheduleRow.enabled) : false;
-  const timezone = scheduleRow?.timezone || DEFAULT_TIMEZONE;
-  const timezoneOffsetSec = Number(scheduleRow?.timezone_offset_sec ?? DEFAULT_TIMEZONE_OFFSET_SEC);
+  const timezone = scheduleRow?.timezone || defaults.defaultTimezone || FALLBACK_TIMEZONE;
+  const timezoneOffsetSec = Number(scheduleRow?.timezone_offset_sec ?? defaults.defaultTimezoneOffsetSec ?? FALLBACK_TIMEZONE_OFFSET_SEC);
   const items = itemRows.map((row) => ({
     id: Number(row.id),
     mealId: row.meal_id,
@@ -73,9 +74,9 @@ function toScheduleResponse(scheduleRow, itemRows = [], deviceId = undefined) {
   };
 }
 
-function toCurrentConfigResponse(deviceRow, currentRow, schedule) {
-  const timezone = currentRow?.timezone || schedule.timezone || DEFAULT_TIMEZONE;
-  const timezoneOffsetSec = Number(currentRow?.timezone_offset_sec ?? schedule.timezoneOffsetSec ?? DEFAULT_TIMEZONE_OFFSET_SEC);
+function toCurrentConfigResponse(deviceRow, currentRow, schedule, defaults = {}) {
+  const timezone = currentRow?.timezone || schedule.timezone || defaults.defaultTimezone || FALLBACK_TIMEZONE;
+  const timezoneOffsetSec = Number(currentRow?.timezone_offset_sec ?? schedule.timezoneOffsetSec ?? defaults.defaultTimezoneOffsetSec ?? FALLBACK_TIMEZONE_OFFSET_SEC);
 
   return {
     deviceId: deviceRow.device_id,
@@ -85,7 +86,7 @@ function toCurrentConfigResponse(deviceRow, currentRow, schedule) {
     addressNote: currentRow?.address_note || null,
     timezone,
     timezoneOffsetSec,
-    keepSetupApEnabled: toBoolean(currentRow?.keep_setup_ap_enabled),
+    keepSetupApEnabled: currentRow ? toBoolean(currentRow.keep_setup_ap_enabled) : Boolean(defaults.defaultKeepSetupApEnabled),
     scheduleEnabled: schedule.enabled,
     schedule: {
       items: schedule.items.map((item) => ({
@@ -154,9 +155,10 @@ async function getScheduleRows(devicePk, executor = getPool(), lock = false) {
   return { scheduleRow, itemRows };
 }
 
-async function getScheduleForDevicePk(devicePk, executor = getPool(), deviceId = undefined) {
+async function getScheduleForDevicePk(devicePk, executor = getPool(), deviceId = undefined, defaults = undefined) {
+  const effectiveDefaults = defaults || await getServerDefaultSettings(executor);
   const { scheduleRow, itemRows } = await getScheduleRows(devicePk, executor);
-  return toScheduleResponse(scheduleRow, itemRows, deviceId);
+  return toScheduleResponse(scheduleRow, itemRows, deviceId, effectiveDefaults);
 }
 
 function assertDeviceCanSaveConfig(deviceRow) {
@@ -171,12 +173,13 @@ function assertDeviceCanSaveConfig(deviceRow) {
 
 export async function getDeviceCurrentConfig(deviceId, userId) {
   const device = await assertOwnedDevice(deviceId, userId);
+  const defaults = await getServerDefaultSettings(getPool());
   const [currentRow, schedule] = await Promise.all([
     getCurrentConfigRow(device.id),
-    getScheduleForDevicePk(device.id, getPool(), device.device_id)
+    getScheduleForDevicePk(device.id, getPool(), device.device_id, defaults)
   ]);
 
-  return toCurrentConfigResponse(device, currentRow, schedule);
+  return toCurrentConfigResponse(device, currentRow, schedule, defaults);
 }
 
 export async function saveDeviceCurrentConfig(deviceId, userId, input, context) {
@@ -189,6 +192,7 @@ export async function saveDeviceCurrentConfig(deviceId, userId, input, context) 
     assertDeviceCanSaveConfig(device);
 
     const currentRow = await getCurrentConfigRow(device.id, connection, true);
+    const defaults = await getServerDefaultSettings(connection);
 
     const wifiSsid = input.wifiSsid.trim();
     const wifiPassword = Object.prototype.hasOwnProperty.call(input, 'wifiPassword')
@@ -196,9 +200,11 @@ export async function saveDeviceCurrentConfig(deviceId, userId, input, context) 
       : currentRow?.wifi_password ?? null;
     const address = emptyToNull(input.address);
     const addressNote = emptyToNull(input.addressNote);
-    const timezone = normalizeTimezone(input.timezone, currentRow?.timezone || DEFAULT_TIMEZONE);
-    const timezoneOffsetSec = normalizeTimezoneOffset(input.timezoneOffsetSec, currentRow?.timezone_offset_sec ?? DEFAULT_TIMEZONE_OFFSET_SEC);
-    const keepSetupApEnabled = input.keepSetupApEnabled === true;
+    const timezone = normalizeTimezone(input.timezone, currentRow?.timezone || defaults.defaultTimezone);
+    const timezoneOffsetSec = normalizeTimezoneOffset(input.timezoneOffsetSec, currentRow?.timezone_offset_sec ?? defaults.defaultTimezoneOffsetSec);
+    const keepSetupApEnabled = Object.prototype.hasOwnProperty.call(input, 'keepSetupApEnabled')
+      ? input.keepSetupApEnabled === true
+      : (currentRow ? toBoolean(currentRow.keep_setup_ap_enabled) : Boolean(defaults.defaultKeepSetupApEnabled));
 
     await connection.execute(
       `INSERT INTO device_current_configs (
@@ -270,7 +276,8 @@ export async function saveDeviceCurrentConfig(deviceId, userId, input, context) 
 
 export async function getDeviceSchedule(deviceId, userId) {
   const device = await assertOwnedDevice(deviceId, userId);
-  return getScheduleForDevicePk(device.id, getPool(), device.device_id);
+  const defaults = await getServerDefaultSettings(getPool());
+  return getScheduleForDevicePk(device.id, getPool(), device.device_id, defaults);
 }
 
 export async function saveDeviceSchedule(deviceId, userId, input, context) {
@@ -281,9 +288,10 @@ export async function saveDeviceSchedule(deviceId, userId, input, context) {
 
     const device = await assertOwnedDevice(deviceId, userId, connection);
     assertDeviceCanSaveConfig(device);
+    const defaults = await getServerDefaultSettings(connection);
 
-    const timezone = normalizeTimezone(input.timezone, DEFAULT_TIMEZONE);
-    const timezoneOffsetSec = normalizeTimezoneOffset(input.timezoneOffsetSec, DEFAULT_TIMEZONE_OFFSET_SEC);
+    const timezone = normalizeTimezone(input.timezone, defaults.defaultTimezone);
+    const timezoneOffsetSec = normalizeTimezoneOffset(input.timezoneOffsetSec, defaults.defaultTimezoneOffsetSec);
     const enabled = input.enabled !== false;
     const normalizedItems = normalizeScheduleItems(input.items || []);
     const scheduleJson = scheduleJsonFromInput({ enabled, items: normalizedItems });

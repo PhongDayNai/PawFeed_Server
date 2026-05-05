@@ -103,7 +103,12 @@
     "mqtt-server-management",
     "mqtt-credential-rotation",
     "device-secret-rotation",
-    "mqtt-connectivity-test"
+    "mqtt-connectivity-test",
+    "phase17",
+    "runtime-settings",
+    "provider-config",
+    "system-settings-runtime",
+    "dynamic-timeouts"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",

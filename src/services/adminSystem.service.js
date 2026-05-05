@@ -2,6 +2,10 @@ import { getPool } from '../config/db.js';
 import { notFoundError } from '../utils/errors.js';
 import { buildPaginationMeta, paginationFromQuery } from '../utils/pagination.js';
 import { writeAuditLog } from './audit.service.js';
+import {
+  SYSTEM_SETTING_KEYS,
+  getEffectiveSystemSettings
+} from './systemSettings.service.js';
 
 function toIso(value) {
   return value ? new Date(value).toISOString() : null;
@@ -43,37 +47,87 @@ export async function listSystemSettings() {
     `SELECT setting_key, setting_value, description, created_at, updated_at
      FROM system_settings ORDER BY setting_key ASC`
   );
-  return rows.map(toSystemSetting);
+  const settings = rows.map(toSystemSetting);
+  const effective = await getEffectiveSystemSettings(getPool());
+  return { settings, effective };
 }
 
 async function upsertSetting({ key, value, description = null }, connection) {
   await connection.execute(
     `INSERT INTO system_settings (setting_key, setting_value, description, created_at, updated_at)
-     VALUES (?, CAST(? AS JSON), ?, NOW(), NOW())
+     VALUES (?, ?, ?, NOW(), NOW())
      ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), description = COALESCE(VALUES(description), description), updated_at = NOW()`,
     [key, JSON.stringify(value), description]
   );
+}
+
+function addSetting(changes, key, value, description) {
+  if (value !== undefined) changes.push({ key, value, description });
+}
+
+function buildChanges(input) {
+  const changes = [];
+
+  if (input.provider) {
+    addSetting(changes, 'provider', input.provider, 'Provider info included in generated config files.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.PROVIDER_NAME, input.provider.name, 'Provider name used in generated config files.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.PROVIDER_BRAND, input.provider.brand, 'Provider brand used in generated config files.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.PROVIDER_WEBSITE, input.provider.website, 'Provider website used in generated config files.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.PROVIDER_CONTACT, input.provider.contact, 'Provider contact used in generated config files.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.PROVIDER_NOTE, input.provider.note, 'Provider note used in generated config files.');
+  }
+
+  const serverDefaults = {
+    ...(input.serverDefaults || {}),
+    ...(input.configFileTtlSec !== undefined ? { configFileTtlSec: input.configFileTtlSec } : {}),
+    ...(input.defaultTimezone !== undefined ? { defaultTimezone: input.defaultTimezone } : {}),
+    ...(input.defaultTimezoneOffsetSec !== undefined ? { defaultTimezoneOffsetSec: input.defaultTimezoneOffsetSec } : {}),
+    ...(input.defaultKeepSetupApEnabled !== undefined ? { defaultKeepSetupApEnabled: input.defaultKeepSetupApEnabled } : {}),
+    ...(input.defaultMqttUseTls !== undefined ? { defaultMqttUseTls: input.defaultMqttUseTls } : {}),
+    ...(input.allowDemoKeepSetupAp !== undefined ? { allowDemoKeepSetupAp: input.allowDemoKeepSetupAp } : {})
+  };
+
+  if (Object.keys(serverDefaults).length) {
+    addSetting(changes, 'server_defaults', serverDefaults, 'Default values used while generating config files and setup screens.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.CONFIG_FILE_TTL_SEC, serverDefaults.configFileTtlSec, 'Config file TTL in seconds.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.DEFAULT_TIMEZONE, serverDefaults.defaultTimezone, 'Default timezone for config/current config.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.DEFAULT_TIMEZONE_OFFSET_SEC, serverDefaults.defaultTimezoneOffsetSec, 'Default timezone offset in seconds.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.DEFAULT_KEEP_SETUP_AP_ENABLED, serverDefaults.defaultKeepSetupApEnabled, 'Default keepSetupApEnabled value.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.DEFAULT_MQTT_USE_TLS, serverDefaults.defaultMqttUseTls, 'Default MQTT TLS flag for provisioning screens.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.ALLOW_DEMO_KEEP_SETUP_AP, serverDefaults.allowDemoKeepSetupAp, 'Allow demo clients/admins to keep setup AP enabled.');
+  }
+
+  const workerTimeouts = {
+    ...(input.workerTimeouts || {}),
+    ...(input.deviceOnlineTtlSec !== undefined ? { deviceOnlineTtlSec: input.deviceOnlineTtlSec } : {}),
+    ...(input.commandAckTimeoutSec !== undefined ? { commandAckTimeoutSec: input.commandAckTimeoutSec } : {}),
+    ...(input.commandCompleteTimeoutSec !== undefined ? { commandCompleteTimeoutSec: input.commandCompleteTimeoutSec } : {})
+  };
+
+  if (Object.keys(workerTimeouts).length) {
+    addSetting(changes, 'worker_timeouts', workerTimeouts, 'Runtime worker timeout values.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.DEVICE_ONLINE_TTL_SEC, workerTimeouts.deviceOnlineTtlSec, 'Device online TTL in seconds before stale/offline.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.COMMAND_ACK_TIMEOUT_SEC, workerTimeouts.commandAckTimeoutSec, 'Command ack timeout in seconds.');
+    addSetting(changes, SYSTEM_SETTING_KEYS.COMMAND_COMPLETE_TIMEOUT_SEC, workerTimeouts.commandCompleteTimeoutSec, 'Command complete timeout in seconds.');
+  }
+
+  for (const setting of input.settings || []) {
+    addSetting(changes, setting.key, setting.value, setting.description ?? null);
+  }
+
+  return changes;
 }
 
 export async function patchSystemSettings(input, context = {}) {
   const connection = await getPool().getConnection();
   try {
     await connection.beginTransaction();
-    const changed = [];
+    const changes = buildChanges(input);
+    const changedKeys = [];
 
-    if (input.provider) {
-      await upsertSetting({ key: 'provider', value: input.provider, description: 'Provider info included in generated config files.' }, connection);
-      changed.push('provider');
-    }
-
-    if (input.serverDefaults) {
-      await upsertSetting({ key: 'server_defaults', value: input.serverDefaults, description: 'Default values used while generating config files and setup screens.' }, connection);
-      changed.push('server_defaults');
-    }
-
-    for (const setting of input.settings || []) {
-      await upsertSetting({ key: setting.key, value: setting.value, description: setting.description ?? null }, connection);
-      changed.push(setting.key);
+    for (const change of changes) {
+      await upsertSetting(change, connection);
+      changedKeys.push(change.key);
     }
 
     await writeAuditLog({
@@ -81,7 +135,7 @@ export async function patchSystemSettings(input, context = {}) {
       action: 'admin.system_settings.patch',
       targetType: 'system_settings',
       targetId: 'multiple',
-      payload: { changedKeys: changed },
+      payload: { changedKeys: [...new Set(changedKeys)] },
       clientIp: context.clientIp,
       userAgent: context.userAgent,
       connection
@@ -133,4 +187,4 @@ export async function getSystemSetting(key) {
   return toSystemSetting(rows[0]);
 }
 
-export const __adminSystemInternals = { toSystemSetting, toAuditLog };
+export const __adminSystemInternals = { toSystemSetting, toAuditLog, buildChanges };
