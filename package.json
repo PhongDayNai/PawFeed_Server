@@ -34,7 +34,10 @@
     "zod",
     "response-helpers",
     "pagination",
-    "error-codes"
+    "error-codes",
+    "current-config",
+    "feeding-schedule",
+    "wifi-config"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",

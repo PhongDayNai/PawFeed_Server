@@ -2,7 +2,7 @@
 
 Backend API server and database tooling for the Pet Feeder IoT system.
 
-The service runs an Express API backed by MySQL. It provides authentication, account management, admin-only device provisioning, pairing-code and QR payload generation, MQTT credential storage, health checks, and database migration/seed scripts.
+The service runs an Express API backed by MySQL. It provides authentication, account management, admin-only device provisioning, pairing-code and QR payload generation, user device ownership, current device configuration, feeding schedule storage, MQTT credential storage, health checks, and database migration/seed scripts.
 
 ## Features
 
@@ -17,6 +17,8 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 - Role-based admin routes.
 - Admin device provisioning APIs.
 - User device linking and ownership APIs.
+- User-managed current device configuration APIs for Wi-Fi, location, timezone, and setup AP settings.
+- Feeding schedule storage with strict time validation, duration limits, and apply-status reporting.
 - Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
 - Device QR payload generation.
 - Pairing-code rotation.
@@ -423,6 +425,69 @@ curl http://localhost:3000/api/devices/feeder001/status \
   -H "Authorization: Bearer $TOKEN"
 ```
 
+Get current device configuration:
+
+```bash
+curl http://localhost:3000/api/devices/feeder001/current-config \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Save current device configuration:
+
+```bash
+curl -X PUT http://localhost:3000/api/devices/feeder001/current-config \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "wifiSsid": "Home_Wifi_5G",
+    "wifiPassword": "12345678",
+    "address": "Kitchen",
+    "addressNote": "Near the window",
+    "timezone": "Asia/Bangkok",
+    "timezoneOffsetSec": 25200,
+    "keepSetupApEnabled": false
+  }'
+```
+
+Get feeding schedule:
+
+```bash
+curl http://localhost:3000/api/devices/feeder001/schedule \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Save feeding schedule:
+
+```bash
+curl -X PUT http://localhost:3000/api/devices/feeder001/schedule \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": true,
+    "timezone": "Asia/Bangkok",
+    "timezoneOffsetSec": 25200,
+    "items": [
+      {
+        "time": "07:00",
+        "openDurationMs": 1200,
+        "enabled": true
+      },
+      {
+        "time": "18:30",
+        "openDurationMs": 1500,
+        "enabled": true
+      }
+    ]
+  }'
+```
+
+Get schedule apply status:
+
+```bash
+curl http://localhost:3000/api/devices/feeder001/schedule/apply-status \
+  -H "Authorization: Bearer $TOKEN"
+```
+
 Rename a linked device:
 
 ```bash
@@ -470,6 +535,10 @@ Run syntax checks:
 
 ```bash
 npm run check
+```
+
+
+```bash
 ```
 
 
