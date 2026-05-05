@@ -3,6 +3,7 @@ import {
   createMqttServer,
   getDeviceMqttCredential,
   getMqttServer,
+  listDeviceMqttCredentials,
   listMqttServers,
   rotateDeviceMqttCredential,
   rotateDeviceSecret,
@@ -35,13 +36,18 @@ export async function patchMqttServer(req, res) {
 }
 
 export async function postMqttServerTest(req, res) {
-  const result = await testMqttServer(req.params.id);
+  const result = await testMqttServer(req.params.id, req.body || {}, requestContext(req));
   return sendSuccess(res, result);
 }
 
 export async function getDeviceMqttCredentialController(req, res) {
   const credential = await getDeviceMqttCredential(req.params.deviceId);
   return sendSuccess(res, { credential });
+}
+
+export async function listDeviceMqttCredentialsController(req, res) {
+  const credentials = await listDeviceMqttCredentials(req.params.deviceId);
+  return sendSuccess(res, { credentials });
 }
 
 export async function rotateDeviceMqttCredentialController(req, res) {

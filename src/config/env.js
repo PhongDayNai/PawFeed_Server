@@ -93,7 +93,9 @@ export const env = {
     reconnectPeriodMs: parseInteger(process.env.MQTT_RECONNECT_PERIOD_MS, 5_000),
     subscribeQos: parseInteger(process.env.MQTT_SUBSCRIBE_QOS, 1),
     publishQos: parseInteger(process.env.MQTT_PUBLISH_QOS, 1),
-    rejectUnauthorized: parseBoolean(process.env.MQTT_TLS_REJECT_UNAUTHORIZED, true)
+    rejectUnauthorized: parseBoolean(process.env.MQTT_TLS_REJECT_UNAUTHORIZED, true),
+    adminTestTimeoutMs: Math.max(1000, parseInteger(process.env.MQTT_ADMIN_TEST_TIMEOUT_MS, 5000)),
+    adminTestClientIdPrefix: process.env.MQTT_ADMIN_TEST_CLIENT_ID_PREFIX || 'pet-feeder-admin-test'
   },
 
   seed: {

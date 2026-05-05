@@ -30,14 +30,26 @@ export const updateMqttServerSchema = z.object({
   isActive: z.boolean().optional()
 }).strict().refine((value) => Object.keys(value).length > 0, 'At least one field is required.');
 
+export const testMqttServerSchema = z.object({
+  username: optionalTrimmedString(150),
+  password: optionalTrimmedString(255),
+  clientId: optionalTrimmedString(120),
+  timeoutMs: z.coerce.number().int().min(1000).max(30000).optional(),
+  useServiceCredentials: z.boolean().optional().default(false),
+  rejectUnauthorized: z.boolean().optional()
+}).strict().optional().default({});
+
 export const adminDeviceMqttCredentialParamsSchema = deviceIdParamSchema;
 
 export const rotateMqttCredentialSchema = z.object({
+  rotationMode: z.enum(['new_credential', 'password_only']).optional().default('new_credential'),
   mqttServerId: z.coerce.number().int().positive().optional(),
   mqttUsername: optionalTrimmedString(150),
-  mqttPassword: optionalTrimmedString(255)
+  mqttPassword: optionalTrimmedString(255),
+  deactivateOld: z.boolean().optional().default(false)
 }).strict();
 
 export const rotateDeviceSecretSchema = z.object({
+  confirmFirmwareSync: z.boolean().optional().default(false),
   deviceSecret: optionalTrimmedString(255)
 }).strict();

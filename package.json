@@ -98,7 +98,12 @@
     "admin-device-management",
     "system-settings",
     "audit-logs",
-    "mqtt-management"
+    "mqtt-management",
+    "phase16",
+    "mqtt-server-management",
+    "mqtt-credential-rotation",
+    "device-secret-rotation",
+    "mqtt-connectivity-test"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",

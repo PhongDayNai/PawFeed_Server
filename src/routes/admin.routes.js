@@ -54,6 +54,7 @@ import {
 } from '../validators/adminSystem.validator.js';
 import {
   getDeviceMqttCredentialController,
+  listDeviceMqttCredentialsController,
   getMqttServerDetail,
   getMqttServers,
   patchMqttServer,
@@ -69,6 +70,7 @@ import {
   mqttServerParamsSchema,
   rotateDeviceSecretSchema,
   rotateMqttCredentialSchema,
+  testMqttServerSchema,
   updateMqttServerSchema
 } from '../validators/adminMqtt.validator.js';
 import { listAdminCommandsQuerySchema } from '../validators/command.validator.js';
@@ -115,7 +117,7 @@ router.get('/admin/mqtt-servers', validateQuery(listMqttServersQuerySchema), asy
 router.post('/admin/mqtt-servers', validateBody(createMqttServerSchema), asyncHandler(postMqttServer));
 router.get('/admin/mqtt-servers/:id', validateParams(mqttServerParamsSchema), asyncHandler(getMqttServerDetail));
 router.patch('/admin/mqtt-servers/:id', validateParams(mqttServerParamsSchema), validateBody(updateMqttServerSchema), asyncHandler(patchMqttServer));
-router.post('/admin/mqtt-servers/:id/test', validateParams(mqttServerParamsSchema), asyncHandler(postMqttServerTest));
+router.post('/admin/mqtt-servers/:id/test', validateParams(mqttServerParamsSchema), validateBody(testMqttServerSchema), asyncHandler(postMqttServerTest));
 
 router.post('/admin/devices', validateBody(createAdminDeviceSchema), asyncHandler(createDevice));
 router.get('/admin/devices', validateQuery(listAdminDevicesQuerySchema), asyncHandler(listDevices));
@@ -131,6 +133,7 @@ router.get('/admin/devices/:deviceId/pairing-code/status', validateParams(adminD
 router.post('/admin/devices/:deviceId/rotate-pairing-code', validateParams(adminDeviceParamsSchema), asyncHandler(rotateDevicePairingCode));
 router.get('/admin/devices/:deviceId/link-attempts', validateParams(adminDeviceParamsSchema), validateQuery(linkAttemptsQuerySchema), asyncHandler(getDeviceLinkAttempts));
 router.get('/admin/devices/:deviceId/mqtt-credential', validateParams(adminDeviceMqttCredentialParamsSchema), asyncHandler(getDeviceMqttCredentialController));
+router.get('/admin/devices/:deviceId/mqtt-credentials', validateParams(adminDeviceMqttCredentialParamsSchema), asyncHandler(listDeviceMqttCredentialsController));
 router.post('/admin/devices/:deviceId/rotate-mqtt-credential', validateParams(adminDeviceMqttCredentialParamsSchema), validateBody(rotateMqttCredentialSchema), asyncHandler(rotateDeviceMqttCredentialController));
 router.post('/admin/devices/:deviceId/rotate-device-secret', validateParams(adminDeviceMqttCredentialParamsSchema), validateBody(rotateDeviceSecretSchema), asyncHandler(rotateDeviceSecretController));
 
