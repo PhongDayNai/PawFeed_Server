@@ -33,6 +33,24 @@ export const env = {
   enableDevErrorRoute: parseBoolean(process.env.ENABLE_DEV_ERROR_ROUTE, false),
   isProduction: process.env.NODE_ENV === 'production',
 
+  security: {
+    trustProxy: parseBoolean(process.env.TRUST_PROXY, false),
+    requireHttps: parseBoolean(process.env.REQUIRE_HTTPS, false),
+    requestIdHeader: process.env.REQUEST_ID_HEADER || 'x-request-id',
+    rejectPrototypePollution: parseBoolean(process.env.REJECT_PROTOTYPE_POLLUTION, true),
+    hstsMaxAgeSec: Math.max(0, parseInteger(process.env.HSTS_MAX_AGE_SEC, 15552000)),
+    authRateLimitWindowMs: parseInteger(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60_000),
+    authRateLimitMax: parseInteger(process.env.AUTH_RATE_LIMIT_MAX, 20),
+    linkDeviceRateLimitWindowMs: parseInteger(process.env.LINK_DEVICE_RATE_LIMIT_WINDOW_MS, 15 * 60_000),
+    linkDeviceRateLimitMax: parseInteger(process.env.LINK_DEVICE_RATE_LIMIT_MAX, 10),
+    feedNowRateLimitWindowMs: parseInteger(process.env.FEED_NOW_RATE_LIMIT_WINDOW_MS, 60_000),
+    feedNowRateLimitMax: parseInteger(process.env.FEED_NOW_RATE_LIMIT_MAX, 20),
+    configGenerationRateLimitWindowMs: parseInteger(process.env.CONFIG_GENERATION_RATE_LIMIT_WINDOW_MS, 10 * 60_000),
+    configGenerationRateLimitMax: parseInteger(process.env.CONFIG_GENERATION_RATE_LIMIT_MAX, 15),
+    adminSensitiveRateLimitWindowMs: parseInteger(process.env.ADMIN_SENSITIVE_RATE_LIMIT_WINDOW_MS, 10 * 60_000),
+    adminSensitiveRateLimitMax: parseInteger(process.env.ADMIN_SENSITIVE_RATE_LIMIT_MAX, 30)
+  },
+
   db: {
     host: process.env.DB_HOST || '127.0.0.1',
     port: parseInteger(process.env.DB_PORT, 3306),

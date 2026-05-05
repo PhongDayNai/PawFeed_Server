@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { errorResponse } from '../utils/response.js';
+import { safeErrorLog } from '../utils/redact.js';
 
 function normalizeError(error) {
   if (error?.type === 'entity.parse.failed') {
@@ -42,10 +43,11 @@ export function errorHandler(error, req, res, _next) {
 
   if (normalized.statusCode >= 500) {
     console.error('[server-error]', {
+      requestId: req.id,
       code: normalized.code,
-      message: error?.message,
       path: req.originalUrl,
       method: req.method,
+      error: safeErrorLog(error),
       stack: env.isProduction ? undefined : error?.stack
     });
   }
@@ -54,7 +56,7 @@ export function errorHandler(error, req, res, _next) {
     errorResponse({
       code: normalized.code,
       message: normalized.message,
-      details: normalized.details
+      details: env.isProduction && normalized.statusCode >= 500 ? undefined : normalized.details
     })
   );
 }

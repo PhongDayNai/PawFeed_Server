@@ -15,6 +15,7 @@
     "db:status": "node scripts/db.status.mjs",
     "phase8:generate-sample": "node scripts/phase8.generate-sample-config.mjs",
     "phase8:compare-payload": "node scripts/phase8.compare-payload.mjs",
+    "security:scan": "node scripts/security-scan.mjs"
   },
   "keywords": [
     "auth",
@@ -113,7 +114,13 @@
     "audit-log-hardening",
     "audit-metadata",
     "audit-export",
-    "sensitive-action-audit"
+    "sensitive-action-audit",
+    "phase19",
+    "security-hardening",
+    "rate-limits",
+    "secret-redaction",
+    "prototype-pollution-guard",
+    "production-security-check"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",

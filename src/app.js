@@ -1,9 +1,14 @@
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
 import morgan from 'morgan';
 import { env } from './config/env.js';
 import { apiRateLimiter } from './middleware/rateLimits.js';
+import {
+  createHelmetMiddleware,
+  prototypePollutionGuard,
+  requestIdMiddleware,
+  requireHttpsMiddleware
+} from './middleware/security.js';
 import { notFoundHandler } from './middleware/notFound.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import healthRoutes from './routes/health.routes.js';
@@ -19,10 +24,17 @@ export function createApp() {
   const app = express();
 
   app.disable('x-powered-by');
-  app.use(helmet());
-  app.use(cors({ origin: env.corsOrigin }));
+  if (env.security.trustProxy) {
+    app.set('trust proxy', 1);
+  }
+
+  app.use(requestIdMiddleware);
+  app.use(createHelmetMiddleware());
+  app.use(requireHttpsMiddleware);
+  app.use(cors({ origin: env.corsOrigin, credentials: false }));
   app.use(express.json({ limit: env.jsonBodyLimit }));
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.urlencoded({ extended: true, limit: env.jsonBodyLimit }));
+  app.use(prototypePollutionGuard);
 
   if (!env.isProduction) {
     app.use(morgan('dev'));

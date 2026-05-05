@@ -31,6 +31,7 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 - Admin MQTT connection testing and safer MQTT credential/device secret rotation flows.
 - Runtime system settings for provider metadata, config defaults, and worker timeout values.
 - Audit log metadata, actor role tracking, secret masking, filtering, and CSV export.
+- Security hardening with request IDs, Helmet headers, optional HTTPS enforcement, production startup checks, prototype pollution protection, secret redaction, and tighter rate limits for sensitive endpoints.
 - Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
 - Device QR payload generation.
 - Pairing-code rotation.
@@ -96,6 +97,12 @@ Important variables:
 - `JSON_BODY_LIMIT`: Express JSON body size limit.
 - `RATE_LIMIT_WINDOW_MS`: rate limit window for `/api/*`.
 - `RATE_LIMIT_MAX`: max requests per rate limit window.
+- `TRUST_PROXY`: enables trusted proxy handling for deployments behind a load balancer or reverse proxy.
+- `REQUIRE_HTTPS`: rejects plain HTTP requests when HTTPS is required by the deployment.
+- `REQUEST_ID_HEADER`: inbound request ID header name.
+- `REJECT_PROTOTYPE_POLLUTION`: rejects request payloads containing reserved object keys.
+- `HSTS_MAX_AGE_SEC`: max age for production HSTS headers.
+- `AUTH_RATE_LIMIT_*`, `LINK_DEVICE_RATE_LIMIT_*`, `FEED_NOW_RATE_LIMIT_*`, `CONFIG_GENERATION_RATE_LIMIT_*`, `ADMIN_SENSITIVE_RATE_LIMIT_*`: endpoint-specific rate limit settings.
 - `ENABLE_DEV_ERROR_ROUTE`: enables `GET /api/dev/error` outside production.
 - `APP_PORT`: public host port used by Docker Compose for the API server.
 - `MYSQL_PORT`: localhost-only host port used by Docker Compose for MySQL.
@@ -172,6 +179,7 @@ curl http://localhost:3000/api/health
 
 ```bash
 npm run phase8:generate-sample
+npm run security:scan
 ```
 
 Stop the containers:

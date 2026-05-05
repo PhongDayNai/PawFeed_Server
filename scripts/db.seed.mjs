@@ -55,18 +55,17 @@ function applyTemplate(sql, variables) {
 }
 
 function orderSeedFiles(files) {
-  const priority = new Map([
+  const order = new Map([
     ['seed_admin.sql', 10],
     ['seed_mqtt_server.sql', 20],
     ['seed_system_settings.sql', 30],
     ['seed_demo_device.sql', 40]
   ]);
 
-  return [...files].sort((left, right) => {
-    const leftPriority = priority.get(left) ?? 100;
-    const rightPriority = priority.get(right) ?? 100;
-
-    return leftPriority - rightPriority || left.localeCompare(right);
+  return [...files].sort((a, b) => {
+    const orderA = order.get(a) ?? 100;
+    const orderB = order.get(b) ?? 100;
+    return orderA - orderB || a.localeCompare(b);
   });
 }
 

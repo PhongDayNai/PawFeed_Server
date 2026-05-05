@@ -69,10 +69,7 @@ export async function listMqttServers(query = {}) {
   }
   const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const [countRows] = await getPool().execute(`SELECT COUNT(*) AS total FROM mqtt_servers ${whereSql}`, values);
-  const [rows] = await getPool().execute(
-    `SELECT * FROM mqtt_servers ${whereSql} ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`,
-    values
-  );
+  const [rows] = await getPool().execute(`SELECT * FROM mqtt_servers ${whereSql} ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`, values);
   return { servers: rows.map(toMqttServer), meta: buildPaginationMeta({ page, limit, total: Number(countRows[0]?.total || 0) }) };
 }
 

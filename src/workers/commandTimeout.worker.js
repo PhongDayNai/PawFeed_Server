@@ -1,3 +1,4 @@
+import { safeErrorLog } from '../utils/redact.js';
 import { getPool } from '../config/db.js';
 import { env } from '../config/env.js';
 import { getWorkerTimeoutSettings } from '../services/systemSettings.service.js';
@@ -78,7 +79,7 @@ export function createCommandTimeoutWorker() {
         );
       }
     } catch (error) {
-      console.error('[worker:command-timeout] failed:', error?.message || error);
+      console.error('[worker:command-timeout] failed:', safeErrorLog(error));
     } finally {
       running = false;
     }

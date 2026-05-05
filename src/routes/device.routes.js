@@ -3,6 +3,11 @@ import { authenticate } from '../middleware/auth.js';
 import { validateBody, validateParams, validateQuery } from '../middleware/validate.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import {
+  configGenerationRateLimiter,
+  feedNowRateLimiter,
+  linkDeviceRateLimiter
+} from '../middleware/rateLimits.js';
+import {
   getDevice,
   getDeviceStatus,
   linkDevice,
@@ -56,7 +61,7 @@ const router = Router();
 
 router.use('/devices', authenticate);
 
-router.post('/devices/link', validateBody(linkDeviceSchema), asyncHandler(linkDevice));
+router.post('/devices/link', linkDeviceRateLimiter, validateBody(linkDeviceSchema), asyncHandler(linkDevice));
 router.get('/devices', validateQuery(listUserDevicesQuerySchema), asyncHandler(listDevices));
 router.get('/devices/:deviceId/status', validateParams(deviceParamsSchema), asyncHandler(getDeviceStatus));
 router.get('/devices/:deviceId/current-config', validateParams(deviceParamsSchema), asyncHandler(getCurrentConfig));
@@ -81,6 +86,7 @@ router.get(
 
 router.post(
   '/devices/:deviceId/config-file',
+  configGenerationRateLimiter,
   validateParams(deviceParamsSchema),
   validateQuery(configFileQuerySchema),
   validateBody(createConfigFileSchema),
@@ -88,6 +94,7 @@ router.post(
 );
 router.post(
   '/devices/:deviceId/config-file/regenerate',
+  configGenerationRateLimiter,
   validateParams(deviceParamsSchema),
   validateQuery(configFileQuerySchema),
   asyncHandler(regenerateConfigFileController)
@@ -95,6 +102,7 @@ router.post(
 
 router.post(
   '/devices/:deviceId/commands/feed-now',
+  feedNowRateLimiter,
   validateParams(deviceParamsSchema),
   validateBody(feedNowBodySchema),
   asyncHandler(feedNow)

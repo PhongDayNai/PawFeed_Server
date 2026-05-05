@@ -23,6 +23,7 @@ ON DUPLICATE KEY UPDATE
   host = VALUES(host),
   mqtt_port = VALUES(mqtt_port),
   tls_port = VALUES(tls_port),
+  websocket_port = VALUES(websocket_port),
   use_tls = VALUES(use_tls),
   is_active = TRUE,
   updated_at = NOW();

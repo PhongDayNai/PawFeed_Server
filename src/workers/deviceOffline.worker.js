@@ -1,3 +1,4 @@
+import { safeErrorLog } from '../utils/redact.js';
 import { getPool } from '../config/db.js';
 import { env } from '../config/env.js';
 import { getWorkerTimeoutSettings } from '../services/systemSettings.service.js';
@@ -62,7 +63,7 @@ export function createDeviceOfflineWorker() {
         console.log(`[worker:device-offline] markedOffline=${result.devicesMarkedOffline}`);
       }
     } catch (error) {
-      console.error('[worker:device-offline] failed:', error?.message || error);
+      console.error('[worker:device-offline] failed:', safeErrorLog(error));
     } finally {
       running = false;
     }

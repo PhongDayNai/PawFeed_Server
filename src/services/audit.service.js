@@ -1,5 +1,7 @@
 import { getPool } from '../config/db.js';
 import { buildPaginationMeta, paginationFromQuery } from '../utils/pagination.js';
+import { redactSensitive } from '../utils/redact.js';
+// SECRET_KEY_PATTERN moved to src/utils/redact.js in Phase 19.
 
 export const AUDIT_ACTIONS = Object.freeze({
   ADMIN_DEVICE_CREATE: 'admin.device.create',
@@ -32,35 +34,8 @@ export const AUDIT_ACTIONS = Object.freeze({
   USER_DEVICE_FEED_NOW_REQUESTED: 'user.device.command.feed_now.requested'
 });
 
-const SECRET_KEY_PATTERN = /(password|pass|secret|token|claim[_-]?code|pairing[_-]?code|signature|authorization|cookie|credential)/i;
-const MASKED_VALUE = '[REDACTED]';
-
-function toIso(value) {
-  return value ? new Date(value).toISOString() : null;
-}
-
-function safeJsonParse(value, fallback = null) {
-  if (value === undefined || value === null) return fallback;
-  if (typeof value === 'object') return value;
-  try { return JSON.parse(value); } catch { return fallback; }
-}
-
-function sanitizeValue(value, depth = 0) {
-  if (depth > 8) return '[MAX_DEPTH]';
-  if (value === null || value === undefined) return value;
-  if (value instanceof Date) return value.toISOString();
-  if (Array.isArray(value)) return value.map((item) => sanitizeValue(item, depth + 1));
-  if (typeof value !== 'object') return value;
-
-  const sanitized = {};
-  for (const [key, child] of Object.entries(value)) {
-    sanitized[key] = SECRET_KEY_PATTERN.test(key) ? MASKED_VALUE : sanitizeValue(child, depth + 1);
-  }
-  return sanitized;
-}
-
 export function sanitizeAuditMetadata(metadata) {
-  return sanitizeValue(metadata);
+  return redactSensitive(metadata);
 }
 
 function metadataToJson(metadata) {
@@ -261,7 +236,6 @@ export async function exportAuditLogsCsv(query = {}) {
 
 export const __auditInternals = {
   AUDIT_ACTIONS,
-  SECRET_KEY_PATTERN,
   sanitizeAuditMetadata,
   toAuditLog,
   buildAuditWhere,
