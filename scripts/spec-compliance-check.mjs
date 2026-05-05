@@ -273,6 +273,7 @@ checkSnippets(checks, allFiles, {
   category: 'config-v3',
   id: 'config.signing-payload-v3-order',
   label: 'Signing payload v3 order and HMAC implementation exist',
+  files: ['src/services/configFile.service.js'],
   snippets: [
     'buildSigningPayloadV3',
     'version=${config.version}',

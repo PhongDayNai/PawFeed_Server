@@ -177,10 +177,10 @@ docker compose ps
 curl http://localhost:3000/api/health
 ```
 
+Run compatibility and static checks:
 
 ```bash
 npm run phase8:generate-sample
-npm run docs:check
 npm run spec:check
 npm run security:scan
 ```
@@ -642,18 +642,6 @@ Run syntax checks:
 npm run check
 ```
 
-
-```bash
-```
-
-
-```bash
-```
-
-
-```bash
-```
-
 Run a health check against a running server:
 
 ```bash
@@ -662,7 +650,7 @@ npm run health
 
 
 ```bash
-npm run docs:check
+npm run spec:check
 ```
 
 
