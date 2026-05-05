@@ -20,6 +20,7 @@ export const listAuditLogsQuerySchema = paginationQuerySchema.extend({
 }).strict();
 
 export const exportAuditLogsQuerySchema = listAuditLogsQuerySchema.extend({
+  format: z.enum(['csv', 'json']).optional().default('csv'),
   limit: z.coerce.number().int().positive().max(5000).optional().default(1000)
 }).strict();
 

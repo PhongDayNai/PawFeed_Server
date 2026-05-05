@@ -43,6 +43,20 @@ function metadataToJson(metadata) {
   return JSON.stringify(sanitizeAuditMetadata(metadata));
 }
 
+function safeJsonParse(value, fallback = null) {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function toIso(value) {
+  return value ? new Date(value).toISOString() : null;
+}
+
 export async function writeAuditLog({
   actorUserId = null,
   actorRole = null,

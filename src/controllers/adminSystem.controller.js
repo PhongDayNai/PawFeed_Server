@@ -27,6 +27,15 @@ export async function getAuditLogs(req, res) {
 }
 
 export async function exportAuditLogs(req, res) {
+  if (req.query.format === 'json') {
+    const result = await listAuditLogs({ ...req.query, page: 1, limit: req.query.limit });
+    return sendSuccess(res, {
+      logs: result.logs,
+      exportedCount: result.logs.length,
+      totalMatched: result.meta.total
+    });
+  }
+
   const result = await exportAuditLogsCsv(req.query);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="audit-logs-${Date.now()}.csv"`);
