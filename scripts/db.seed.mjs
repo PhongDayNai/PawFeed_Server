@@ -11,6 +11,13 @@ import {
   logDbTarget
 } from './db/common.mjs';
 
+const seedOrder = [
+  'seed_admin.sql',
+  'seed_mqtt_server.sql',
+  'seed_demo_device.sql',
+  'seed_system_settings.sql'
+];
+
 async function buildSeedVariables() {
   const adminPasswordHash = await bcrypt.hash(env.seed.adminPassword, 10);
 
@@ -22,6 +29,7 @@ async function buildSeedVariables() {
     MQTT_HOST: escapeSqlValue(env.seed.mqttHost),
     MQTT_PORT: String(env.seed.mqttPort),
     MQTT_TLS_PORT: String(env.seed.mqttTlsPort),
+    MQTT_WEBSOCKET_PORT: String(env.seed.mqttWebsocketPort),
     MQTT_USE_TLS: boolToSql(env.seed.mqttUseTls),
     DEMO_DEVICE_ID: escapeSqlValue(env.seed.demoDeviceId),
     DEMO_MACHINE_CODE: escapeSqlValue(env.seed.demoMachineCode),
@@ -39,25 +47,15 @@ function applyTemplate(sql, variables) {
   );
 }
 
-function orderSeedFiles(files) {
-  const priority = new Map([
-    ['seed_admin.sql', 10],
-    ['seed_mqtt_server.sql', 20],
-    ['seed_demo_device.sql', 30],
-    ['seed_system_settings.sql', 40]
-  ]);
-
-  return [...files].sort((a, b) => {
-    const byPriority = (priority.get(a) ?? 100) - (priority.get(b) ?? 100);
-    return byPriority || a.localeCompare(b);
-  });
-}
-
 async function main() {
   logDbTarget();
   const connection = await openDbConnection({ multipleStatements: true });
   try {
-    const files = orderSeedFiles(await listSqlFiles(seedsDir));
+    const discoveredFiles = await listSqlFiles(seedsDir);
+    const files = [
+      ...seedOrder.filter((file) => discoveredFiles.includes(file)),
+      ...discoveredFiles.filter((file) => !seedOrder.includes(file))
+    ];
     const variables = await buildSeedVariables();
 
     for (const file of files) {

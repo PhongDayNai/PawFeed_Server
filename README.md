@@ -1,31 +1,25 @@
 # Pet Feeder Server
 
-Backend API server and database bootstrap tooling for the Pet Feeder IoT system.
+Backend API server and database tooling for the Pet Feeder IoT system.
 
-The server is built with Node.js and Express. It provides the base HTTP API runtime, standard JSON responses, middleware, health checks, and database migration/seed scripts for a MySQL-backed Pet Feeder deployment. Docker Compose can run the API server and MySQL together for local development or server deployment.
+The service runs an Express API backed by MySQL. It provides authentication, account management, admin-only device provisioning, pairing-code and QR payload generation, MQTT credential storage, health checks, and database migration/seed scripts.
 
 ## Features
 
-- Express server with JSON and URL-encoded request parsing.
-- Environment configuration loaded from `.env`.
-- Security headers with `helmet`.
-- CORS configuration through `CORS_ORIGIN`.
-- Request logging with `morgan`.
-- Rate limiting for `/api/*` routes.
+- Express API runtime with JSON request parsing, CORS, Helmet, request logging, and rate limiting.
+- Standard JSON success and error responses.
 - Health check endpoint: `GET /api/health`.
-- Standard JSON response helpers.
-- Standard JSON 404 and error handling.
-- Optional development-only error route for testing error responses.
-- MySQL connection configuration with `mysql2`.
-- SQL migration runner with checksum tracking.
-- SQL seed runner for admin user, MQTT server, demo device, and system settings.
-- Authentication APIs for register, login, refresh, logout, current user, and password changes.
-- Account profile update API.
-- JWT access and refresh tokens.
-- Role middleware for protected admin routes.
-- Request body validation with `zod`.
-- Docker runtime for the API server.
-- Docker Compose setup for the API server and MySQL.
+- MySQL connection pooling with `mysql2/promise`.
+- SQL migration, seed, reset, and status scripts.
+- JWT authentication with access and refresh tokens.
+- User registration, login, logout, refresh, current-user, password-change, and profile-update APIs.
+- Role-based admin routes.
+- Admin device provisioning APIs.
+- Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
+- Device QR payload generation.
+- Pairing-code rotation.
+- Audit logs for admin device operations.
+- Docker and Docker Compose runtime for local development and deployment testing.
 
 ## Tech Stack
 
@@ -33,6 +27,9 @@ The server is built with Node.js and Express. It provides the base HTTP API runt
 - Express 4
 - MySQL 8.4
 - Docker and Docker Compose
+- JWT
+- Zod
+- MQTT client library
 
 ## Project Structure
 
@@ -41,9 +38,6 @@ pet-feeder-server/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── package.json
-├── .env
-├── .env.example
-├── README.md
 ├── scripts/
 │   ├── check-health.mjs
 │   ├── db.migrate.mjs
@@ -51,7 +45,6 @@ pet-feeder-server/
 │   ├── db.seed.mjs
 │   ├── db.status.mjs
 │   └── db/
-│       └── common.mjs
 ├── sql/
 │   ├── migrations/
 │   └── seeds/
@@ -59,14 +52,12 @@ pet-feeder-server/
     ├── app.js
     ├── server.js
     ├── config/
-    │   ├── db.js
-    │   └── env.js
     ├── controllers/
     ├── middleware/
     ├── routes/
     ├── services/
-    ├── validators/
-    └── utils/
+    ├── utils/
+    └── validators/
 ```
 
 ## Environment
@@ -99,9 +90,10 @@ Important variables:
 - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`: secrets used to sign access and refresh tokens.
 - `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN`: JWT expiration windows.
 - `BCRYPT_SALT_ROUNDS`: bcrypt hashing cost for user passwords.
+- `SEED_MQTT_HOST`, `SEED_MQTT_PORT`, `SEED_MQTT_TLS_PORT`, `SEED_MQTT_WEBSOCKET_PORT`: seeded MQTT broker connection metadata.
 - `SEED_*`: seed data for the initial admin account, MQTT server, and demo device.
 
-Change all default MySQL, admin, demo-device, and JWT secret values before running this on a shared machine or production server.
+Change all default MySQL, admin, demo-device, MQTT, and JWT secret values before running this on a shared machine or production server.
 
 ## Local Development
 
@@ -191,37 +183,45 @@ DB_ALLOW_RESET=true npm run db:reset -- --force
 
 The migration runner records executed files in `schema_migrations` with checksums. If a migration file changes after execution, the runner fails instead of silently reapplying changed SQL.
 
-## API Endpoints
+## Seed Data
 
-### Root
+Default admin account:
 
-```bash
-curl http://localhost:3000/
+```text
+email: admin@example.com
+password: Admin@123456
 ```
 
-### Health Check
+Default demo device:
+
+```text
+deviceId: feeder001
+machineCode: PF-ESP8266-001
+pairingCode: A8K2-91PQ
+deviceSecret: CHANGE_ME_DEVICE_SECRET
+mqttUsername: feeder001
+mqttPassword: feeder001_dev_password
+```
+
+Default MQTT server metadata:
+
+```text
+name: local-broker
+host: 127.0.0.1
+mqttPort: 1883
+tlsPort: 8883
+websocketPort: 9001
+useTls: false
+```
+
+The backend stores MQTT credentials in MySQL. It does not automatically create users in Mosquitto. If the broker requires username/password authentication, create or sync the same MQTT accounts on the broker before testing device connections.
+
+## API Endpoints
+
+### Health
 
 ```bash
 curl http://localhost:3000/api/health
-```
-
-Example response:
-
-```json
-{
-  "ok": true,
-  "service": "pet-feeder-server",
-  "version": "4.1",
-  "environment": "development",
-  "uptimeSec": 10,
-  "timestamp": "2026-05-04T00:00:00.000Z"
-}
-```
-
-You can also run the health check script after the server is running:
-
-```bash
-npm run health
 ```
 
 ### Authentication
@@ -249,31 +249,17 @@ curl -X POST http://localhost:3000/api/auth/login \
   }'
 ```
 
-Example login response:
+Use the returned access token for protected APIs:
 
-```json
-{
-  "ok": true,
-  "user": {
-    "id": 1,
-    "fullName": "System Admin",
-    "email": "admin@example.com",
-    "role": "admin",
-    "isDisabled": false
-  },
-  "tokenType": "Bearer",
-  "accessToken": "...",
-  "refreshToken": "...",
-  "accessTokenExpiresIn": "15m",
-  "refreshTokenExpiresIn": "7d"
-}
+```bash
+TOKEN="YOUR_ACCESS_TOKEN"
 ```
 
 Get the current user:
 
 ```bash
 curl http://localhost:3000/api/auth/me \
-  -H "Authorization: Bearer ACCESS_TOKEN"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 Refresh tokens:
@@ -281,19 +267,8 @@ Refresh tokens:
 ```bash
 curl -X POST http://localhost:3000/api/auth/refresh \
   -H "Content-Type: application/json" \
-  -d '{"refreshToken":"REFRESH_TOKEN"}'
-```
-
-Change password:
-
-```bash
-curl -X POST http://localhost:3000/api/auth/change-password \
-  -H "Authorization: Bearer ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
   -d '{
-    "currentPassword": "Admin@123456",
-    "newPassword": "Admin@1234567",
-    "confirmNewPassword": "Admin@1234567"
+    "refreshToken": "YOUR_REFRESH_TOKEN"
   }'
 ```
 
@@ -301,81 +276,154 @@ Log out:
 
 ```bash
 curl -X POST http://localhost:3000/api/auth/logout \
-  -H "Authorization: Bearer ACCESS_TOKEN"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-Logout is stateless in the current implementation. The server accepts the request, and the client should delete its local access and refresh tokens.
+Change password:
+
+```bash
+curl -X POST http://localhost:3000/api/auth/change-password \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "currentPassword": "OldPassword@123",
+    "newPassword": "NewPassword@123"
+  }'
+```
 
 ### Account
 
-Update the current user's profile:
+Update profile:
 
 ```bash
 curl -X PATCH http://localhost:3000/api/account/profile \
-  -H "Authorization: Bearer ACCESS_TOKEN" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"fullName":"New Name"}'
+  -d '{
+    "fullName": "Updated Name"
+  }'
 ```
 
 ### Admin
 
-Test admin role protection:
+Check admin access:
 
 ```bash
 curl http://localhost:3000/api/admin/ping \
-  -H "Authorization: Bearer ADMIN_ACCESS_TOKEN"
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-A non-admin user receives `INSUFFICIENT_ROLE`.
-
-### Not Found Response
+Create a device with generated values:
 
 ```bash
-curl http://localhost:3000/api/unknown
+curl -X POST http://localhost:3000/api/admin/devices \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "firmwareVersion": "1.0.0-dev"
+  }'
 ```
 
-Example response:
-
-```json
-{
-  "ok": false,
-  "error": {
-    "code": "ROUTE_NOT_FOUND",
-    "message": "Cannot GET /api/unknown"
-  }
-}
-```
-
-### Development Error Response
-
-Enable the development error route in `.env`:
-
-```env
-ENABLE_DEV_ERROR_ROUTE=true
-```
-
-Restart the server and call:
+Create a device with explicit values:
 
 ```bash
-curl http://localhost:3000/api/dev/error
+curl -X POST http://localhost:3000/api/admin/devices \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "deviceId": "feeder002",
+    "machineCode": "PF-ESP8266-002",
+    "pairingCode": "B7K2-91PQ",
+    "deviceSecret": "CHANGE_ME_DEVICE_SECRET",
+    "firmwareVersion": "1.0.0-dev",
+    "mqttUsername": "feeder002",
+    "mqttPassword": "feeder002_dev_password"
+  }'
 ```
 
-This route is disabled in production.
+List devices:
 
-## Scripts
+```bash
+curl http://localhost:3000/api/admin/devices \
+  -H "Authorization: Bearer $TOKEN"
+```
 
-- `npm start`: start the server with Node.js.
-- `npm run dev`: start the server with Nodemon.
-- `npm run check`: run Node.js syntax checks for the server and database scripts.
-- `npm run health`: call the local health endpoint.
-- `npm run db:status`: show migration and table status.
-- `npm run db:migrate`: apply pending SQL migrations.
-- `npm run db:seed`: apply SQL seed data.
-- `npm run db:reset`: drop and rebuild a non-production database when explicitly allowed.
+Filter devices:
+
+```bash
+curl "http://localhost:3000/api/admin/devices?q=PF-ESP8266&page=1&limit=20" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Get device detail:
+
+```bash
+curl http://localhost:3000/api/admin/devices/feeder001 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Get QR payload:
+
+```bash
+curl http://localhost:3000/api/admin/devices/feeder001/qr \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Get pairing-code status:
+
+```bash
+curl http://localhost:3000/api/admin/devices/feeder001/pairing-code/status \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Rotate pairing code:
+
+```bash
+curl -X POST http://localhost:3000/api/admin/devices/feeder001/rotate-pairing-code \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Admin list and detail responses mask pairing codes and MQTT passwords. Device secrets are not returned by the admin list/detail, QR, or status endpoints.
+
+## MQTT Broker Accounts
+
+For local broker testing, create accounts matching the device credentials stored in MySQL.
+
+Example Mosquitto commands:
+
+```bash
+docker compose -f /path/to/mqtt-server/docker-compose.yml \
+  exec -T mosquitto \
+  sh -lc "mosquitto_passwd -b /mosquitto/config/passwords server 'server_strong_password' && \
+          mosquitto_passwd -b /mosquitto/config/passwords feeder001 'feeder001_dev_password'"
+```
+
+Reload Mosquitto after changing the password file:
+
+```bash
+docker kill -s HUP pet-feeder-mqtt
+```
+
+If reload is not available, restart the broker container.
+
+## Validation
+
+Run syntax checks:
+
+```bash
+npm run check
+```
+
+Run a health check against a running server:
+
+```bash
+npm run health
+```
 
 ## Security Notes
 
-- Refresh tokens are stateless JWTs in the current implementation, so logout does not revoke already issued tokens server-side.
-- Disabled users cannot log in, and existing access tokens for disabled users are rejected by the auth middleware.
-- API responses never include `password_hash`.
-- Use long, random, different values for `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` outside local development.
+- Use long, random, different values for `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET`.
+- Change default seed passwords before using shared environments.
+- Treat `device_secret` and `mqtt_password` as sensitive values.
+- Admin APIs should be exposed only behind authenticated and authorized access.
+- MQTT credentials stored in MySQL must be synced to the broker separately unless a broker-sync worker is added.

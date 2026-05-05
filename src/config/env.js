@@ -60,6 +60,7 @@ export const env = {
     mqttHost: process.env.SEED_MQTT_HOST || '127.0.0.1',
     mqttPort: parseInteger(process.env.SEED_MQTT_PORT, 1883),
     mqttTlsPort: parseInteger(process.env.SEED_MQTT_TLS_PORT, 8883),
+    mqttWebsocketPort: parseInteger(process.env.SEED_MQTT_WEBSOCKET_PORT, 9001),
     mqttUseTls: parseBoolean(process.env.SEED_MQTT_USE_TLS, false),
     demoDeviceId: process.env.SEED_DEMO_DEVICE_ID || 'feeder001',
     demoMachineCode: process.env.SEED_DEMO_MACHINE_CODE || 'PF-ESP8266-001',

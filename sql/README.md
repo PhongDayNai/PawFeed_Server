@@ -1,16 +1,8 @@
-# SQL — Phase 1
+# SQL — Pet Feeder Server
 
-Thư mục này chứa migration và seed cho backend Pet Feeder IoT.
+Phase 1 tạo nền database và Phase 2 sử dụng bảng `users` để triển khai Auth.
 
 ## Migrations
-
-Chạy toàn bộ migration:
-
-```bash
-npm run db:migrate
-```
-
-Các migration hiện có:
 
 ```text
 001_create_users.sql
@@ -24,17 +16,30 @@ Các migration hiện có:
 009_create_audit_logs.sql
 ```
 
-Script migrate tự tạo bảng `schema_migrations` để theo dõi migration đã chạy.
+## Auth fields trong bảng users
 
-## Seeds
-
-Chạy seed:
-
-```bash
-npm run db:seed
+```text
+id
+full_name
+email
+password_hash
+role
+is_disabled
+created_at
+updated_at
 ```
 
-Seed hiện có:
+Role hiện hỗ trợ:
+
+```text
+user
+admin
+technician
+```
+
+`is_disabled = TRUE` sẽ chặn login và chặn cả Bearer token cũ trong middleware `authenticate`.
+
+## Seeds
 
 ```text
 seed_admin.sql
@@ -43,26 +48,12 @@ seed_demo_device.sql
 seed_system_settings.sql
 ```
 
-`seed_admin.sql` có placeholder. Script `npm run db:seed` sẽ tự hash `SEED_ADMIN_PASSWORD` bằng `bcryptjs` rồi thay vào SQL trước khi chạy.
+Admin seed mặc định:
 
-## Reset DB dev
-
-Để reset nhanh database dev:
-
-```bash
-DB_ALLOW_RESET=true npm run db:reset -- --force
+```text
+email: admin@example.com
+password: Admin@123456
+role: admin
 ```
 
-Hoặc sửa trong `.env`:
-
-```env
-DB_ALLOW_RESET=true
-```
-
-Rồi chạy:
-
-```bash
-npm run db:reset -- --force
-```
-
-Lưu ý: script sẽ từ chối reset nếu `NODE_ENV=production`.
+Password được hash trong script `npm run db:seed`, không lưu plaintext vào database.

@@ -1,0 +1,496 @@
+import { getPool } from '../config/db.js';
+import {
+  badRequestError,
+  conflictError,
+  notFoundError
+} from '../utils/errors.js';
+import {
+  createDeviceId,
+  createDeviceSecret,
+  createMachineCode,
+  createMqttPassword,
+  createPairingCode,
+  maskPairingCode,
+  maskSecret
+} from '../utils/crypto.js';
+import {
+  emptyToNull,
+  normalizeDeviceId,
+  normalizeMachineCode,
+  normalizePairingCode
+} from '../utils/normalize.js';
+import { writeAuditLog } from './audit.service.js';
+
+const deviceStatusSet = new Set([
+  'not_configured',
+  'linked',
+  'config_generated',
+  'configured',
+  'online',
+  'offline',
+  'disabled',
+  'revoked',
+  'unlinked'
+]);
+
+function normalizeStatus(status) {
+  const normalized = status || 'not_configured';
+  if (!deviceStatusSet.has(normalized)) {
+    throw badRequestError('Invalid device status.', 'INVALID_DEVICE_STATUS');
+  }
+  return normalized;
+}
+
+function buildQrPayload(device) {
+  return {
+    type: 'pet_feeder_machine',
+    version: 1,
+    machineCode: device.machine_code,
+    pairingCode: device.claim_code
+  };
+}
+
+function toBoolean(value) {
+  return Boolean(Number(value));
+}
+
+function toIso(value) {
+  return value ? new Date(value).toISOString() : null;
+}
+
+function toAdminDevice(row, { includeQrPayload = false, includePairingCode = false } = {}) {
+  const device = {
+    id: Number(row.id),
+    deviceId: row.device_id,
+    machineCode: row.machine_code,
+    firmwareVersion: row.firmware_version,
+    status: row.status,
+    ownerUserId: row.owner_user_id === null ? null : Number(row.owner_user_id),
+    owner: row.owner_email
+      ? {
+          id: Number(row.owner_user_id),
+          fullName: row.owner_full_name,
+          email: row.owner_email
+        }
+      : null,
+    activeConfigId: row.active_config_id,
+    activeConfigVersion: Number(row.active_config_version || 0),
+    pairingCodeMasked: maskPairingCode(row.claim_code),
+    pairingCodeUsedAt: toIso(row.claim_code_used_at),
+    pairingCodeRotatedAt: toIso(row.claim_code_rotated_at),
+    lastSeenAt: toIso(row.last_seen_at),
+    lastOnlineAt: toIso(row.last_online_at),
+    lastOfflineAt: toIso(row.last_offline_at),
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
+    latestStatus: row.latest_status_device_id
+      ? {
+          online: toBoolean(row.online),
+          mode: row.mode,
+          isFeeding: toBoolean(row.is_feeding),
+          doorOpen: toBoolean(row.door_open),
+          wifiConnected: toBoolean(row.wifi_connected),
+          serverConnected: toBoolean(row.server_connected),
+          timeSynced: toBoolean(row.time_synced),
+          scheduleEnabled: toBoolean(row.schedule_enabled),
+          scheduleCount: Number(row.schedule_count || 0),
+          activeConfigId: row.latest_active_config_id,
+          activeConfigVersion: Number(row.latest_active_config_version || 0),
+          lastTelemetryAt: toIso(row.last_telemetry_at),
+          updatedAt: toIso(row.latest_status_updated_at)
+        }
+      : null,
+    mqttCredential: row.mqtt_credential_id
+      ? {
+          id: Number(row.mqtt_credential_id),
+          username: row.mqtt_username,
+          passwordMasked: maskSecret(row.mqtt_password),
+          isActive: toBoolean(row.mqtt_credential_active),
+          server: {
+            id: Number(row.mqtt_server_id),
+            name: row.mqtt_server_name,
+            host: row.mqtt_host,
+            mqttPort: Number(row.mqtt_port),
+            tlsPort: Number(row.tls_port),
+            websocketPort: row.websocket_port === null ? null : Number(row.websocket_port),
+            useTls: toBoolean(row.mqtt_use_tls)
+          }
+        }
+      : null
+  };
+
+  if (includePairingCode) {
+    device.pairingCode = row.claim_code;
+  }
+
+  if (includeQrPayload) {
+    device.qrPayload = buildQrPayload(row);
+  }
+
+  return device;
+}
+
+function baseDeviceSelect() {
+  return `
+    SELECT
+      d.id,
+      d.device_id,
+      d.machine_code,
+      d.claim_code,
+      d.claim_code_used_at,
+      d.claim_code_rotated_at,
+      d.owner_user_id,
+      d.firmware_version,
+      d.status,
+      d.active_config_id,
+      d.active_config_version,
+      d.last_seen_at,
+      d.last_online_at,
+      d.last_offline_at,
+      d.created_at,
+      d.updated_at,
+      u.full_name AS owner_full_name,
+      u.email AS owner_email,
+      ls.device_id AS latest_status_device_id,
+      ls.online,
+      ls.mode,
+      ls.is_feeding,
+      ls.door_open,
+      ls.wifi_connected,
+      ls.server_connected,
+      ls.time_synced,
+      ls.schedule_enabled,
+      ls.schedule_count,
+      ls.active_config_id AS latest_active_config_id,
+      ls.active_config_version AS latest_active_config_version,
+      ls.last_telemetry_at,
+      ls.updated_at AS latest_status_updated_at,
+      mc.id AS mqtt_credential_id,
+      mc.mqtt_username,
+      mc.mqtt_password,
+      mc.is_active AS mqtt_credential_active,
+      ms.id AS mqtt_server_id,
+      ms.name AS mqtt_server_name,
+      ms.host AS mqtt_host,
+      ms.mqtt_port,
+      ms.tls_port,
+      ms.websocket_port,
+      ms.use_tls AS mqtt_use_tls
+    FROM devices d
+    LEFT JOIN users u ON u.id = d.owner_user_id
+    LEFT JOIN device_latest_status ls ON ls.device_id = d.id
+    LEFT JOIN device_mqtt_credentials mc ON mc.device_id = d.id AND mc.is_active = TRUE
+    LEFT JOIN mqtt_servers ms ON ms.id = mc.mqtt_server_id
+  `;
+}
+
+export async function findAdminDeviceByDeviceId(deviceId, connection = null) {
+  const executor = connection || getPool();
+  const [rows] = await executor.execute(
+    `${baseDeviceSelect()} WHERE d.device_id = ? LIMIT 1`,
+    [deviceId]
+  );
+  return rows[0] || null;
+}
+
+async function getActiveMqttServer({ mqttServerId = null, connection }) {
+  if (mqttServerId) {
+    const [rows] = await connection.execute(
+      `SELECT id, name, host, mqtt_port, tls_port, websocket_port, use_tls
+       FROM mqtt_servers
+       WHERE id = ? AND is_active = TRUE
+       LIMIT 1`,
+      [mqttServerId]
+    );
+    if (!rows[0]) {
+      throw badRequestError('MQTT server was not found or is inactive.', 'MQTT_SERVER_NOT_FOUND');
+    }
+    return rows[0];
+  }
+
+  const [rows] = await connection.execute(
+    `SELECT id, name, host, mqtt_port, tls_port, websocket_port, use_tls
+     FROM mqtt_servers
+     WHERE is_active = TRUE
+     ORDER BY id ASC
+     LIMIT 1`
+  );
+
+  if (!rows[0]) {
+    throw badRequestError('No active MQTT server found. Seed or create one first.', 'NO_ACTIVE_MQTT_SERVER');
+  }
+
+  return rows[0];
+}
+
+async function assertUniqueDeviceFields({ deviceId, machineCode, mqttUsername, connection }) {
+  const [deviceRows] = await connection.execute(
+    `SELECT device_id, machine_code FROM devices WHERE device_id = ? OR machine_code = ? LIMIT 1`,
+    [deviceId, machineCode]
+  );
+
+  if (deviceRows.length > 0) {
+    const existing = deviceRows[0];
+    if (existing.device_id === deviceId) {
+      throw conflictError('Device ID already exists.', 'DEVICE_ID_ALREADY_EXISTS');
+    }
+    throw conflictError('Machine code already exists.', 'MACHINE_CODE_ALREADY_EXISTS');
+  }
+
+  const [mqttRows] = await connection.execute(
+    `SELECT id FROM device_mqtt_credentials WHERE mqtt_username = ? LIMIT 1`,
+    [mqttUsername]
+  );
+
+  if (mqttRows.length > 0) {
+    throw conflictError('MQTT username already exists.', 'MQTT_USERNAME_ALREADY_EXISTS');
+  }
+}
+
+export async function createAdminDevice(input, context) {
+  const connection = await getPool().getConnection();
+  const deviceId = normalizeDeviceId(input.deviceId || createDeviceId());
+  const machineCode = normalizeMachineCode(input.machineCode || createMachineCode());
+  const pairingCode = normalizePairingCode(input.pairingCode || createPairingCode());
+  const deviceSecret = input.deviceSecret || createDeviceSecret();
+  const firmwareVersion = emptyToNull(input.firmwareVersion);
+  const status = normalizeStatus(input.status);
+  const mqttUsername = normalizeDeviceId(input.mqttUsername || deviceId);
+  const mqttPassword = input.mqttPassword || createMqttPassword();
+
+  try {
+    await connection.beginTransaction();
+    await assertUniqueDeviceFields({ deviceId, machineCode, mqttUsername, connection });
+    const mqttServer = await getActiveMqttServer({ mqttServerId: input.mqttServerId, connection });
+
+    const [deviceResult] = await connection.execute(
+      `INSERT INTO devices (
+        device_id,
+        machine_code,
+        claim_code,
+        claim_code_used_at,
+        claim_code_rotated_at,
+        owner_user_id,
+        device_secret,
+        firmware_version,
+        status,
+        active_config_id,
+        active_config_version,
+        last_seen_at,
+        last_online_at,
+        last_offline_at,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, NULL, NULL, NULL, ?, ?, ?, NULL, 0, NULL, NULL, NULL, NOW(), NOW())`,
+      [deviceId, machineCode, pairingCode, deviceSecret, firmwareVersion, status]
+    );
+
+    const devicePk = deviceResult.insertId;
+
+    await connection.execute(
+      `INSERT INTO device_mqtt_credentials (
+        device_id,
+        mqtt_server_id,
+        mqtt_username,
+        mqtt_password,
+        is_active,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, TRUE, NOW(), NOW())`,
+      [devicePk, mqttServer.id, mqttUsername, mqttPassword]
+    );
+
+    await connection.execute(
+      `INSERT INTO device_latest_status (
+        device_id,
+        online,
+        mode,
+        is_feeding,
+        door_open,
+        wifi_connected,
+        server_connected,
+        time_synced,
+        schedule_enabled,
+        schedule_count,
+        active_config_id,
+        active_config_version,
+        last_seen_at,
+        last_telemetry_at,
+        updated_at
+      ) VALUES (?, FALSE, 'unknown', FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, 0, NULL, 0, NULL, NULL, NOW())`,
+      [devicePk]
+    );
+
+    await writeAuditLog({
+      actorUserId: context.actorUserId,
+      action: 'admin.device.create',
+      targetType: 'device',
+      targetId: deviceId,
+      payload: {
+        deviceId,
+        machineCode,
+        mqttServerId: Number(mqttServer.id),
+        mqttUsername,
+        status
+      },
+      clientIp: context.clientIp,
+      userAgent: context.userAgent,
+      connection
+    });
+
+    await connection.commit();
+
+    const deviceRow = await findAdminDeviceByDeviceId(deviceId);
+    return toAdminDevice(deviceRow, { includeQrPayload: true, includePairingCode: true });
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function listAdminDevices(query = {}) {
+  const pool = getPool();
+  const page = Math.max(Number(query.page || 1), 1);
+  const limit = Math.min(Math.max(Number(query.limit || 20), 1), 100);
+  const offset = (page - 1) * limit;
+
+  const where = [];
+  const values = [];
+
+  if (query.status) {
+    where.push('d.status = ?');
+    values.push(query.status);
+  }
+
+  if (query.ownerUserId !== undefined && query.ownerUserId !== null) {
+    where.push('d.owner_user_id = ?');
+    values.push(query.ownerUserId);
+  }
+
+  if (query.q) {
+    where.push('(d.device_id LIKE ? OR d.machine_code LIKE ? OR u.email LIKE ?)');
+    const keyword = `%${query.q}%`;
+    values.push(keyword, keyword, keyword);
+  }
+
+  const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+
+  const [countRows] = await pool.execute(
+    `SELECT COUNT(*) AS total
+     FROM devices d
+     LEFT JOIN users u ON u.id = d.owner_user_id
+     ${whereSql}`,
+    values
+  );
+
+  const [rows] = await pool.execute(
+    `${baseDeviceSelect()}
+     ${whereSql}
+     ORDER BY d.created_at DESC, d.id DESC
+     LIMIT ${limit} OFFSET ${offset}`,
+    values
+  );
+
+  const total = Number(countRows[0]?.total || 0);
+  return {
+    devices: rows.map((row) => toAdminDevice(row)),
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit)
+    }
+  };
+}
+
+export async function getAdminDevice(deviceId) {
+  const row = await findAdminDeviceByDeviceId(deviceId);
+  if (!row) {
+    throw notFoundError('Device was not found.', 'DEVICE_NOT_FOUND');
+  }
+
+  return toAdminDevice(row);
+}
+
+export async function getAdminDeviceQr(deviceId) {
+  const row = await findAdminDeviceByDeviceId(deviceId);
+  if (!row) {
+    throw notFoundError('Device was not found.', 'DEVICE_NOT_FOUND');
+  }
+
+  return {
+    deviceId: row.device_id,
+    machineCode: row.machine_code,
+    pairingCodeMasked: maskPairingCode(row.claim_code),
+    qrPayload: buildQrPayload(row)
+  };
+}
+
+export async function getPairingCodeStatus(deviceId) {
+  const row = await findAdminDeviceByDeviceId(deviceId);
+  if (!row) {
+    throw notFoundError('Device was not found.', 'DEVICE_NOT_FOUND');
+  }
+
+  return {
+    deviceId: row.device_id,
+    machineCode: row.machine_code,
+    pairingCodeMasked: maskPairingCode(row.claim_code),
+    usedAt: toIso(row.claim_code_used_at),
+    rotatedAt: toIso(row.claim_code_rotated_at),
+    canBeClaimed: !row.owner_user_id && !row.claim_code_used_at && row.status !== 'disabled' && row.status !== 'revoked'
+  };
+}
+
+export async function rotatePairingCode(deviceId, context) {
+  const connection = await getPool().getConnection();
+  const newPairingCode = createPairingCode();
+
+  try {
+    await connection.beginTransaction();
+    const row = await findAdminDeviceByDeviceId(deviceId, connection);
+    if (!row) {
+      throw notFoundError('Device was not found.', 'DEVICE_NOT_FOUND');
+    }
+
+    await connection.execute(
+      `UPDATE devices
+       SET claim_code = ?, claim_code_used_at = NULL, claim_code_rotated_at = NOW(), updated_at = NOW()
+       WHERE id = ?`,
+      [newPairingCode, row.id]
+    );
+
+    await writeAuditLog({
+      actorUserId: context.actorUserId,
+      action: 'admin.device.rotate_pairing_code',
+      targetType: 'device',
+      targetId: row.device_id,
+      payload: {
+        deviceId: row.device_id,
+        machineCode: row.machine_code,
+        previousPairingCodeMasked: maskPairingCode(row.claim_code)
+      },
+      clientIp: context.clientIp,
+      userAgent: context.userAgent,
+      connection
+    });
+
+    await connection.commit();
+
+    const updatedRow = await findAdminDeviceByDeviceId(deviceId);
+    return {
+      ok: true,
+      deviceId: updatedRow.device_id,
+      machineCode: updatedRow.machine_code,
+      pairingCode: updatedRow.claim_code,
+      qrPayload: buildQrPayload(updatedRow)
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
