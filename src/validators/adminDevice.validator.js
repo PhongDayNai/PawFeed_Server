@@ -39,3 +39,18 @@ export const listAdminDevicesQuerySchema = paginationQuerySchema.extend({
   ownerUserId: z.coerce.number().int().positive().optional(),
   q: z.string().trim().max(100, 'Search keyword must be at most 100 characters.').optional()
 }).strict();
+
+export const updateAdminDeviceSchema = z.object({
+  displayName: optionalTrimmedString(255),
+  machineCode: optionalTrimmedString(100)
+    .transform((value) => value?.toUpperCase())
+    .refine((value) => value === undefined || machineCodeRegex.test(value), 'Machine code format is invalid.'),
+  firmwareVersion: optionalTrimmedString(50),
+  status: z.enum(deviceStatusValues).optional()
+}).strict().refine((value) => Object.keys(value).length > 0, 'At least one field is required.');
+
+export const transferOwnerSchema = z.object({
+  ownerUserId: z.coerce.number().int().positive('Owner user ID must be a positive integer.')
+}).strict();
+
+export const linkAttemptsQuerySchema = paginationQuerySchema.strict();

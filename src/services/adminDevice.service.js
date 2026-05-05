@@ -388,8 +388,8 @@ export async function listAdminDevices(query = {}) {
     `${baseDeviceSelect()}
      ${whereSql}
      ORDER BY d.created_at DESC, d.id DESC
-     LIMIT ? OFFSET ?`,
-    [...values, limit, offset]
+     LIMIT ${limit} OFFSET ${offset}`,
+    values
   );
 
   const total = Number(countRows[0]?.total || 0);
@@ -487,4 +487,214 @@ export async function rotatePairingCode(deviceId, context) {
   } finally {
     connection.release();
   }
+}
+
+export async function updateAdminDevice(deviceId, input, context = {}) {
+  const connection = await getPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const row = await findAdminDeviceByDeviceId(deviceId, connection);
+    if (!row) throw notFoundError('Device was not found.', 'DEVICE_NOT_FOUND');
+
+    if (input.machineCode && normalizeMachineCode(input.machineCode) !== row.machine_code) {
+      const machineCode = normalizeMachineCode(input.machineCode);
+      const [dupes] = await connection.execute('SELECT id FROM devices WHERE machine_code = ? AND id <> ? LIMIT 1', [machineCode, row.id]);
+      if (dupes.length) throw conflictError('Machine code already exists.', 'MACHINE_CODE_ALREADY_EXISTS');
+      input.machineCode = machineCode;
+    }
+
+    const displayName = Object.hasOwn(input, 'displayName') ? emptyToNull(input.displayName) : row.display_name;
+    const machineCode = input.machineCode || row.machine_code;
+    const firmwareVersion = Object.hasOwn(input, 'firmwareVersion') ? emptyToNull(input.firmwareVersion) : row.firmware_version;
+    const status = input.status ? normalizeStatus(input.status) : row.status;
+
+    await connection.execute(
+      `UPDATE devices
+       SET display_name = ?, machine_code = ?, firmware_version = ?, status = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [displayName, machineCode, firmwareVersion, status, row.id]
+    );
+
+    await writeAuditLog({
+      actorUserId: context.actorUserId,
+      action: 'admin.device.update',
+      targetType: 'device',
+      targetId: row.device_id,
+      payload: { updatedFields: Object.keys(input) },
+      clientIp: context.clientIp,
+      userAgent: context.userAgent,
+      connection
+    });
+
+    await connection.commit();
+    return toAdminDevice(await findAdminDeviceByDeviceId(deviceId));
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+async function setAdminDeviceStatus(deviceId, status, context = {}, auditAction = null) {
+  const connection = await getPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const row = await findAdminDeviceByDeviceId(deviceId, connection);
+    if (!row) throw notFoundError('Device was not found.', 'DEVICE_NOT_FOUND');
+
+    await connection.execute('UPDATE devices SET status = ?, updated_at = NOW() WHERE id = ?', [status, row.id]);
+    if (status === 'disabled' || status === 'revoked') {
+      await connection.execute(
+        `UPDATE device_latest_status SET online = FALSE, is_feeding = FALSE, door_open = FALSE, updated_at = NOW() WHERE device_id = ?`,
+        [row.id]
+      );
+    }
+
+    await writeAuditLog({
+      actorUserId: context.actorUserId,
+      action: auditAction || `admin.device.${status}`,
+      targetType: 'device',
+      targetId: row.device_id,
+      payload: { previousStatus: row.status, newStatus: status },
+      clientIp: context.clientIp,
+      userAgent: context.userAgent,
+      connection
+    });
+
+    await connection.commit();
+    return toAdminDevice(await findAdminDeviceByDeviceId(deviceId));
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export function disableAdminDevice(deviceId, context) {
+  return setAdminDeviceStatus(deviceId, 'disabled', context, 'admin.device.disable');
+}
+
+export async function enableAdminDevice(deviceId, context = {}) {
+  const row = await findAdminDeviceByDeviceId(deviceId);
+  if (!row) throw notFoundError('Device was not found.', 'DEVICE_NOT_FOUND');
+  const nextStatus = row.owner_user_id ? 'linked' : 'not_configured';
+  return setAdminDeviceStatus(deviceId, nextStatus, context, 'admin.device.enable');
+}
+
+export function revokeAdminDevice(deviceId, context) {
+  return setAdminDeviceStatus(deviceId, 'revoked', context, 'admin.device.revoke');
+}
+
+export async function unlinkAdminDevice(deviceId, context = {}) {
+  const connection = await getPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const row = await findAdminDeviceByDeviceId(deviceId, connection);
+    if (!row) throw notFoundError('Device was not found.', 'DEVICE_NOT_FOUND');
+
+    await connection.execute(
+      `UPDATE devices SET owner_user_id = NULL, status = 'unlinked', updated_at = NOW() WHERE id = ?`,
+      [row.id]
+    );
+    await connection.execute(
+      `INSERT INTO device_link_histories (device_id, user_id, machine_code, pairing_code_used, action, client_ip, user_agent, created_at)
+       VALUES (?, ?, ?, NULL, 'unlinked_by_admin', ?, ?, NOW())`,
+      [row.id, row.owner_user_id || null, row.machine_code, context.clientIp || null, context.userAgent || null]
+    );
+    await writeAuditLog({
+      actorUserId: context.actorUserId,
+      action: 'admin.device.unlink',
+      targetType: 'device',
+      targetId: row.device_id,
+      payload: { previousOwnerUserId: row.owner_user_id || null },
+      clientIp: context.clientIp,
+      userAgent: context.userAgent,
+      connection
+    });
+
+    await connection.commit();
+    return toAdminDevice(await findAdminDeviceByDeviceId(deviceId));
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function transferAdminDeviceOwner(deviceId, input, context = {}) {
+  const connection = await getPool().getConnection();
+  try {
+    await connection.beginTransaction();
+    const row = await findAdminDeviceByDeviceId(deviceId, connection);
+    if (!row) throw notFoundError('Device was not found.', 'DEVICE_NOT_FOUND');
+
+    const [users] = await connection.execute('SELECT id, email FROM users WHERE id = ? AND is_disabled = FALSE LIMIT 1', [input.ownerUserId]);
+    if (!users[0]) throw notFoundError('Target owner user was not found or is disabled.', 'USER_NOT_FOUND');
+
+    await connection.execute(
+      `UPDATE devices SET owner_user_id = ?, status = 'linked', updated_at = NOW() WHERE id = ?`,
+      [input.ownerUserId, row.id]
+    );
+    await connection.execute(
+      `INSERT INTO device_link_histories (device_id, user_id, machine_code, pairing_code_used, action, client_ip, user_agent, created_at)
+       VALUES (?, ?, ?, NULL, 'transferred', ?, ?, NOW())`,
+      [row.id, input.ownerUserId, row.machine_code, context.clientIp || null, context.userAgent || null]
+    );
+    await writeAuditLog({
+      actorUserId: context.actorUserId,
+      action: 'admin.device.transfer_owner',
+      targetType: 'device',
+      targetId: row.device_id,
+      payload: { previousOwnerUserId: row.owner_user_id || null, newOwnerUserId: Number(input.ownerUserId) },
+      clientIp: context.clientIp,
+      userAgent: context.userAgent,
+      connection
+    });
+
+    await connection.commit();
+    return toAdminDevice(await findAdminDeviceByDeviceId(deviceId));
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function listAdminDeviceLinkAttempts(deviceId, query = {}) {
+  const row = await findAdminDeviceByDeviceId(deviceId);
+  if (!row) throw notFoundError('Device was not found.', 'DEVICE_NOT_FOUND');
+  const { page, limit, offset } = paginationFromQuery(query);
+
+  const [countRows] = await getPool().execute(
+    `SELECT COUNT(*) AS total FROM device_link_histories WHERE device_id = ? OR machine_code = ?`,
+    [row.id, row.machine_code]
+  );
+  const [rows] = await getPool().execute(
+    `SELECT h.*, u.email AS user_email, u.full_name AS user_full_name
+     FROM device_link_histories h
+     LEFT JOIN users u ON u.id = h.user_id
+     WHERE h.device_id = ? OR h.machine_code = ?
+     ORDER BY h.created_at DESC, h.id DESC
+     LIMIT ${limit} OFFSET ${offset}`,
+    [row.id, row.machine_code]
+  );
+
+  return {
+    attempts: rows.map((item) => ({
+      id: Number(item.id),
+      deviceId: row.device_id,
+      machineCode: item.machine_code,
+      action: item.action,
+      pairingCodeMasked: maskPairingCode(item.pairing_code_used),
+      user: item.user_id ? { id: Number(item.user_id), email: item.user_email, fullName: item.user_full_name || null } : null,
+      clientIp: item.client_ip || null,
+      userAgent: item.user_agent || null,
+      createdAt: toIso(item.created_at)
+    })),
+    meta: buildPaginationMeta({ page, limit, total: Number(countRows[0]?.total || 0) })
+  };
 }

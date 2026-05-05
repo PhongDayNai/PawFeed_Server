@@ -688,8 +688,8 @@ export async function listConfigGenerations(deviceId, userId, { page = 1, limit 
      FROM device_config_generations
      WHERE device_id = ?
      ORDER BY config_version DESC, id DESC
-     LIMIT ? OFFSET ?`,
-    [device.id, normalizedLimit, offset]
+     LIMIT ${normalizedLimit} OFFSET ${offset}`,
+    [device.id]
   );
 
   return {

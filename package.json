@@ -90,7 +90,15 @@
     "phase14",
     "user-dashboard",
     "dashboard-api",
-    "user-apis-full"
+    "user-apis-full",
+    "phase15",
+    "admin-apis-full",
+    "admin-dashboard",
+    "admin-user-management",
+    "admin-device-management",
+    "system-settings",
+    "audit-logs",
+    "mqtt-management"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",

@@ -1,11 +1,18 @@
 import { sendCreated, sendPaginated, sendSuccess } from '../utils/response.js';
 import {
   createAdminDevice,
+  disableAdminDevice,
+  enableAdminDevice,
   getAdminDevice,
   getAdminDeviceQr,
   getPairingCodeStatus,
+  listAdminDeviceLinkAttempts,
   listAdminDevices,
-  rotatePairingCode
+  revokeAdminDevice,
+  rotatePairingCode,
+  transferAdminDeviceOwner,
+  unlinkAdminDevice,
+  updateAdminDevice
 } from '../services/adminDevice.service.js';
 
 function requestContext(req) {
@@ -31,6 +38,36 @@ export async function getDevice(req, res) {
   return sendSuccess(res, { device });
 }
 
+export async function updateDevice(req, res) {
+  const device = await updateAdminDevice(req.params.deviceId, req.body, requestContext(req));
+  return sendSuccess(res, { device });
+}
+
+export async function disableDevice(req, res) {
+  const device = await disableAdminDevice(req.params.deviceId, requestContext(req));
+  return sendSuccess(res, { device });
+}
+
+export async function enableDevice(req, res) {
+  const device = await enableAdminDevice(req.params.deviceId, requestContext(req));
+  return sendSuccess(res, { device });
+}
+
+export async function revokeDevice(req, res) {
+  const device = await revokeAdminDevice(req.params.deviceId, requestContext(req));
+  return sendSuccess(res, { device });
+}
+
+export async function unlinkDevice(req, res) {
+  const device = await unlinkAdminDevice(req.params.deviceId, requestContext(req));
+  return sendSuccess(res, { device });
+}
+
+export async function transferDeviceOwner(req, res) {
+  const device = await transferAdminDeviceOwner(req.params.deviceId, req.body, requestContext(req));
+  return sendSuccess(res, { device });
+}
+
 export async function getDeviceQr(req, res) {
   const result = await getAdminDeviceQr(req.params.deviceId);
   return sendSuccess(res, result);
@@ -44,4 +81,9 @@ export async function getDevicePairingStatus(req, res) {
 export async function rotateDevicePairingCode(req, res) {
   const result = await rotatePairingCode(req.params.deviceId, requestContext(req));
   return sendSuccess(res, result);
+}
+
+export async function getDeviceLinkAttempts(req, res) {
+  const result = await listAdminDeviceLinkAttempts(req.params.deviceId, req.query);
+  return sendPaginated(res, result.attempts, result.meta, 'attempts');
 }
