@@ -2,6 +2,7 @@ import mqtt from 'mqtt';
 import { env } from '../config/env.js';
 import { AppError, ERROR_CODES } from '../utils/errors.js';
 import { mqttRouter } from './mqttRouter.js';
+import { registerDefaultMqttHandlers } from './handlers/index.js';
 
 export const DEFAULT_MQTT_SUBSCRIPTIONS = Object.freeze([
   'feeder/+/online',
@@ -57,6 +58,7 @@ export class MqttClientService {
     this.config = config;
     this.mqttModule = mqttModule;
     this.router = router;
+    registerDefaultMqttHandlers(this.router);
     this.logger = logger;
     this.client = null;
     this.startedAt = null;

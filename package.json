@@ -58,7 +58,15 @@
     "mqtt-client",
     "mqtt-publisher",
     "mqtt-router",
-    "auto-reconnect"
+    "auto-reconnect",
+    "phase10",
+    "mqtt-inbound",
+    "mqtt-handlers",
+    "telemetry-handler",
+    "ack-handler",
+    "event-handler",
+    "online-handler",
+    "feeding-history"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",
