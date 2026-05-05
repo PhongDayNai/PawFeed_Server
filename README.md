@@ -26,6 +26,7 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 - Remote feed-now command APIs with user command status lookup and admin command history filtering.
 - Optional background workers for command timeouts and stale-device offline detection.
 - User and admin operation log APIs for device events, feeding history, and config generation history.
+- User dashboard summary API and paginated device listing with filters.
 - Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
 - Device QR payload generation.
 - Pairing-code rotation.

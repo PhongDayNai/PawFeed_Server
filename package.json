@@ -86,7 +86,11 @@
     "feeding-histories",
     "config-generation-logs",
     "config-revoke",
-    "operation-logs"
+    "operation-logs",
+    "phase14",
+    "user-dashboard",
+    "dashboard-api",
+    "user-apis-full"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",

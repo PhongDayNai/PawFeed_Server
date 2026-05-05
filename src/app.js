@@ -11,6 +11,7 @@ import authRoutes from './routes/auth.routes.js';
 import accountRoutes from './routes/account.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import deviceRoutes from './routes/device.routes.js';
+import dashboardRoutes from './routes/dashboard.routes.js';
 import devRoutes from './routes/dev.routes.js';
 import { sendSuccess } from './utils/response.js';
 
@@ -41,6 +42,7 @@ export function createApp() {
   app.use('/api', healthRoutes);
   app.use('/api', authRoutes);
   app.use('/api', accountRoutes);
+  app.use('/api', dashboardRoutes);
   app.use('/api', deviceRoutes);
   app.use('/api', adminRoutes);
 

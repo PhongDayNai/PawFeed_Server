@@ -24,6 +24,7 @@ import {
 import {
   deviceParamsSchema,
   linkDeviceSchema,
+  listUserDevicesQuerySchema,
   updateUserDeviceSchema
 } from '../validators/device.validator.js';
 import { saveCurrentConfigSchema } from '../validators/config.validator.js';
@@ -56,7 +57,7 @@ const router = Router();
 router.use('/devices', authenticate);
 
 router.post('/devices/link', validateBody(linkDeviceSchema), asyncHandler(linkDevice));
-router.get('/devices', asyncHandler(listDevices));
+router.get('/devices', validateQuery(listUserDevicesQuerySchema), asyncHandler(listDevices));
 router.get('/devices/:deviceId/status', validateParams(deviceParamsSchema), asyncHandler(getDeviceStatus));
 router.get('/devices/:deviceId/current-config', validateParams(deviceParamsSchema), asyncHandler(getCurrentConfig));
 router.put(

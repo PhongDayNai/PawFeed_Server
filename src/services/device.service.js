@@ -12,6 +12,7 @@ import {
   normalizePairingCode
 } from '../utils/normalize.js';
 import { writeAuditLog } from './audit.service.js';
+import { buildPaginationMeta, paginationFromQuery } from '../utils/pagination.js';
 
 const blockedDeviceStatuses = new Set(['disabled', 'revoked']);
 
@@ -318,15 +319,52 @@ export async function linkDeviceToUser(input, context) {
   }
 }
 
-export async function listUserDevices(userId) {
-  const [rows] = await getPool().execute(
-    `${baseUserDeviceSelect()}
-     WHERE d.owner_user_id = ?
-     ORDER BY d.updated_at DESC, d.created_at DESC, d.id DESC`,
-    [userId]
+export async function listUserDevices(userId, query = {}) {
+  const pagination = paginationFromQuery(query);
+  const conditions = ['d.owner_user_id = ?'];
+  const values = [userId];
+
+  if (query.status) {
+    conditions.push('d.status = ?');
+    values.push(query.status);
+  }
+
+  if (query.online !== undefined) {
+    conditions.push('COALESCE(ls.online, 0) = ?');
+    values.push(query.online ? 1 : 0);
+  }
+
+  if (query.search) {
+    conditions.push('(d.device_id LIKE ? OR d.machine_code LIKE ? OR d.display_name LIKE ?)');
+    const searchTerm = `%${query.search}%`;
+    values.push(searchTerm, searchTerm, searchTerm);
+  }
+
+  const whereSql = `WHERE ${conditions.join(' AND ')}`;
+  const [countRows] = await getPool().execute(
+    `SELECT COUNT(*) AS total
+     FROM devices d
+     LEFT JOIN device_latest_status ls ON ls.device_id = d.id
+     ${whereSql}`,
+    values
   );
 
-  return rows.map((row) => toUserDevice(row));
+  const [rows] = await getPool().execute(
+    `${baseUserDeviceSelect()}
+     ${whereSql}
+     ORDER BY COALESCE(ls.last_seen_at, d.last_seen_at, d.updated_at, d.created_at) DESC, d.id DESC
+     LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+    values
+  );
+
+  return {
+    items: rows.map((row) => toUserDevice(row)),
+    pagination: buildPaginationMeta({
+      page: pagination.page,
+      limit: pagination.limit,
+      total: Number(countRows[0]?.total || 0)
+    })
+  };
 }
 
 export async function getUserDevice(deviceId, userId) {

@@ -25,8 +25,8 @@ export async function linkDevice(req, res) {
 }
 
 export async function listDevices(req, res) {
-  const devices = await listUserDevices(req.user.id);
-  return sendSuccess(res, { devices });
+  const result = await listUserDevices(req.user.id, req.query);
+  return sendSuccess(res, { devices: result.items }, 200, result.pagination);
 }
 
 export async function getDevice(req, res) {
