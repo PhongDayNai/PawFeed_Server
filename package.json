@@ -52,7 +52,13 @@
     "hmac-compatibility",
     "machine-debug",
     "signing-payload-debug",
-    "payload-compare"
+    "payload-compare",
+    "phase9",
+    "mqtt-service",
+    "mqtt-client",
+    "mqtt-publisher",
+    "mqtt-router",
+    "auto-reconnect"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",

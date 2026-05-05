@@ -67,6 +67,22 @@ export const env = {
     bcryptSaltRounds: parseInteger(process.env.BCRYPT_SALT_ROUNDS, 12)
   },
 
+  mqtt: {
+    enabled: parseBoolean(process.env.MQTT_ENABLED, false),
+    host: process.env.MQTT_BROKER_HOST || '127.0.0.1',
+    port: parseInteger(process.env.MQTT_BROKER_PORT, 1883),
+    useTls: parseBoolean(process.env.MQTT_BROKER_USE_TLS, false),
+    username: process.env.MQTT_SERVICE_USERNAME || '',
+    password: process.env.MQTT_SERVICE_PASSWORD || '',
+    clientId: process.env.MQTT_CLIENT_ID || `pet-feeder-server-${process.pid}`,
+    keepaliveSec: parseInteger(process.env.MQTT_KEEPALIVE_SEC, 60),
+    connectTimeoutMs: parseInteger(process.env.MQTT_CONNECT_TIMEOUT_MS, 10_000),
+    reconnectPeriodMs: parseInteger(process.env.MQTT_RECONNECT_PERIOD_MS, 5_000),
+    subscribeQos: parseInteger(process.env.MQTT_SUBSCRIBE_QOS, 1),
+    publishQos: parseInteger(process.env.MQTT_PUBLISH_QOS, 1),
+    rejectUnauthorized: parseBoolean(process.env.MQTT_TLS_REJECT_UNAUTHORIZED, true)
+  },
+
   seed: {
     adminFullName: process.env.SEED_ADMIN_FULL_NAME || 'System Admin',
     adminEmail: process.env.SEED_ADMIN_EMAIL || 'admin@example.com',

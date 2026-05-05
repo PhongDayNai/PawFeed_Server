@@ -21,6 +21,7 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 - Feeding schedule storage with strict time validation, duration limits, and apply-status reporting.
 - HMAC-signed device config file generation and generation history APIs.
 - Machine compatibility tooling for config-file signing payload inspection and comparison.
+- Optional MQTT connection service with default subscriptions for device online, state, telemetry, event, and ack topics.
 - Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
 - Device QR payload generation.
 - Pairing-code rotation.
@@ -97,6 +98,11 @@ Important variables:
 - `CONFIG_FILE_TTL_SEC`: generated config file lifetime in seconds.
 - `DEFAULT_TIMEZONE`, `DEFAULT_TIMEZONE_OFFSET_SEC`, `DEFAULT_KEEP_SETUP_AP_ENABLED`: defaults used when generating config files.
 - `PROVIDER_NAME`, `PROVIDER_BRAND`, `PROVIDER_WEBSITE`, `PROVIDER_CONTACT`, `PROVIDER_NOTE`: provider metadata included in generated config files.
+- `MQTT_ENABLED`: enables the server-side MQTT connection service.
+- `MQTT_BROKER_HOST`, `MQTT_BROKER_PORT`, `MQTT_BROKER_USE_TLS`: broker connection settings.
+- `MQTT_SERVICE_USERNAME`, `MQTT_SERVICE_PASSWORD`, `MQTT_CLIENT_ID`: service client credentials and identity.
+- `MQTT_KEEPALIVE_SEC`, `MQTT_CONNECT_TIMEOUT_MS`, `MQTT_RECONNECT_PERIOD_MS`: MQTT connection timing settings.
+- `MQTT_SUBSCRIBE_QOS`, `MQTT_PUBLISH_QOS`, `MQTT_TLS_REJECT_UNAUTHORIZED`: MQTT subscription, publish, and TLS behavior.
 - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`: secrets used to sign access and refresh tokens.
 - `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN`: JWT expiration windows.
 - `BCRYPT_SALT_ROUNDS`: bcrypt hashing cost for user passwords.
