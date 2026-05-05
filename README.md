@@ -181,6 +181,7 @@ curl http://localhost:3000/api/health
 ```bash
 npm run phase8:generate-sample
 npm run docs:check
+npm run spec:check
 npm run security:scan
 ```
 

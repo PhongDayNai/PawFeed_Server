@@ -26,6 +26,8 @@ COPY fixtures ./fixtures
 COPY docs ./docs
 COPY deploy ./deploy
 
+RUN mkdir -p tmp && chown -R app:app tmp
+
 USER app
 
 EXPOSE 3000

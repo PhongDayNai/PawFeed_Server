@@ -16,6 +16,7 @@
     "phase8:generate-sample": "node scripts/phase8.generate-sample-config.mjs",
     "phase8:compare-payload": "node scripts/phase8.compare-payload.mjs",
     "security:scan": "node scripts/security-scan.mjs",
+    "spec:check": "node scripts/spec-compliance-check.mjs",
   },
   "keywords": [
     "auth",
@@ -125,7 +126,13 @@
     "deployment-notes",
     "docker",
     "api-docs",
-    "readme"
+    "readme",
+    "phase21",
+    "spec-compliance",
+    "compliance-checklist",
+    "final-checklist",
+    "spec-check",
+    "quality-gate"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",
