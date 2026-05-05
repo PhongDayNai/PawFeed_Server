@@ -24,6 +24,7 @@ The service runs an Express API backed by MySQL. It provides authentication, acc
 - Optional MQTT connection service with default subscriptions for device online, state, telemetry, event, and ack topics.
 - MQTT inbound handlers that update device status, telemetry timestamps, events, command acknowledgements, config apply status, and feeding history.
 - Remote feed-now command APIs with user command status lookup and admin command history filtering.
+- Optional background workers for command timeouts and stale-device offline detection.
 - Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
 - Device QR payload generation.
 - Pairing-code rotation.
@@ -105,6 +106,9 @@ Important variables:
 - `MQTT_SERVICE_USERNAME`, `MQTT_SERVICE_PASSWORD`, `MQTT_CLIENT_ID`: service client credentials and identity.
 - `MQTT_KEEPALIVE_SEC`, `MQTT_CONNECT_TIMEOUT_MS`, `MQTT_RECONNECT_PERIOD_MS`: MQTT connection timing settings.
 - `MQTT_SUBSCRIBE_QOS`, `MQTT_PUBLISH_QOS`, `MQTT_TLS_REJECT_UNAUTHORIZED`: MQTT subscription, publish, and TLS behavior.
+- `WORKERS_ENABLED`, `WORKERS_RUN_ON_START`, `WORKERS_LOG_NOOP_RUNS`: background worker runtime controls.
+- `COMMAND_TIMEOUT_WORKER_ENABLED`, `COMMAND_TIMEOUT_WORKER_INTERVAL_MS`, `COMMAND_ACK_TIMEOUT_SEC`, `COMMAND_COMPLETE_TIMEOUT_SEC`: command timeout worker settings.
+- `DEVICE_OFFLINE_WORKER_ENABLED`, `DEVICE_OFFLINE_WORKER_INTERVAL_MS`, `DEVICE_ONLINE_TTL_SEC`: stale-device offline worker settings.
 - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`: secrets used to sign access and refresh tokens.
 - `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN`: JWT expiration windows.
 - `BCRYPT_SALT_ROUNDS`: bcrypt hashing cost for user passwords.

@@ -17,6 +17,7 @@ RUN addgroup -S app && adduser -S app -G app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY package*.json ./
+COPY .env.example ./.env.example
 COPY src ./src
 COPY scripts ./scripts
 COPY sql ./sql

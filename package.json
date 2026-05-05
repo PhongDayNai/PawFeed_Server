@@ -72,7 +72,15 @@
     "command-status",
     "device-commands",
     "mqtt-command",
-    "feed-once"
+    "feed-once",
+    "phase12",
+    "workers",
+    "command-timeout",
+    "device-offline",
+    "stale-device",
+    "offline-worker",
+    "command-ack-timeout",
+    "command-complete-timeout"
   ],
   "author": "Phong Dương Hùng",
   "license": "UNLICENSED",

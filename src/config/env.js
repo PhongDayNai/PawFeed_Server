@@ -67,6 +67,19 @@ export const env = {
     bcryptSaltRounds: parseInteger(process.env.BCRYPT_SALT_ROUNDS, 12)
   },
 
+  workers: {
+    enabled: parseBoolean(process.env.WORKERS_ENABLED, false),
+    runOnStart: parseBoolean(process.env.WORKERS_RUN_ON_START, true),
+    logNoopRuns: parseBoolean(process.env.WORKERS_LOG_NOOP_RUNS, false),
+    commandTimeoutEnabled: parseBoolean(process.env.COMMAND_TIMEOUT_WORKER_ENABLED, true),
+    commandTimeoutIntervalMs: Math.max(5000, parseInteger(process.env.COMMAND_TIMEOUT_WORKER_INTERVAL_MS, 10000)),
+    commandAckTimeoutSec: Math.max(1, parseInteger(process.env.COMMAND_ACK_TIMEOUT_SEC, 30)),
+    commandCompleteTimeoutSec: Math.max(1, parseInteger(process.env.COMMAND_COMPLETE_TIMEOUT_SEC, 60)),
+    deviceOfflineEnabled: parseBoolean(process.env.DEVICE_OFFLINE_WORKER_ENABLED, true),
+    deviceOfflineIntervalMs: Math.max(10000, parseInteger(process.env.DEVICE_OFFLINE_WORKER_INTERVAL_MS, 30000)),
+    deviceOnlineTtlSec: Math.max(1, parseInteger(process.env.DEVICE_ONLINE_TTL_SEC, 90))
+  },
+
   mqtt: {
     enabled: parseBoolean(process.env.MQTT_ENABLED, false),
     host: process.env.MQTT_BROKER_HOST || '127.0.0.1',
