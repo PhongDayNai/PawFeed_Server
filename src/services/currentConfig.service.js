@@ -30,8 +30,8 @@ function normalizeScheduleItems(items = []) {
   return [...items]
     .map((item, index) => ({
       time: String(item.time).slice(0, 5),
-      openDurationMs: Number(item.openDurationMs),
-      enabled: item.enabled !== false,
+      portionSize: Number(item.portionSize),
+      daysOfWeek: Array.isArray(item.daysOfWeek) ? item.daysOfWeek : [0, 1, 2, 3, 4, 5, 6],
       mealOrder: Number(item.mealOrder || index + 1),
       mealId: item.mealId || `meal_${index + 1}`
     }))
@@ -41,11 +41,12 @@ function normalizeScheduleItems(items = []) {
 function scheduleJsonFromInput(schedule) {
   return {
     enabled: schedule.enabled !== false,
-    items: normalizeScheduleItems(schedule.items).map((item, index) => ({
+    items: normalizeScheduleItems(schedule.entries || []).map((item, index) => ({
       id: item.mealId || `meal_${index + 1}`,
       time: item.time,
-      openDurationMs: item.openDurationMs,
-      enabled: item.enabled
+      portionSize: item.portionSize,
+      daysOfWeek: item.daysOfWeek,
+      enabled: true
     }))
   };
 }
@@ -54,12 +55,13 @@ function toScheduleResponse(scheduleRow, itemRows = [], deviceId = undefined, de
   const enabled = scheduleRow ? toBoolean(scheduleRow.enabled) : false;
   const timezone = scheduleRow?.timezone || defaults.defaultTimezone || FALLBACK_TIMEZONE;
   const timezoneOffsetSec = Number(scheduleRow?.timezone_offset_sec ?? defaults.defaultTimezoneOffsetSec ?? FALLBACK_TIMEZONE_OFFSET_SEC);
-  const items = itemRows.map((row) => ({
+  const entries = itemRows.map((row) => ({
     id: Number(row.id),
     mealId: row.meal_id,
     mealOrder: Number(row.meal_order),
     time: String(row.time_of_day).slice(0, 5),
-    openDurationMs: Number(row.open_duration_ms),
+    portionSize: Number(row.portion_size),
+    daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
     enabled: toBoolean(row.enabled)
   }));
 
@@ -68,7 +70,7 @@ function toScheduleResponse(scheduleRow, itemRows = [], deviceId = undefined, de
     enabled,
     timezone,
     timezoneOffsetSec,
-    items,
+    entries,
     createdAt: toIso(scheduleRow?.created_at),
     updatedAt: toIso(scheduleRow?.updated_at)
   };
@@ -89,10 +91,10 @@ function toCurrentConfigResponse(deviceRow, currentRow, schedule, defaults = {})
     keepSetupApEnabled: currentRow ? toBoolean(currentRow.keep_setup_ap_enabled) : Boolean(defaults.defaultKeepSetupApEnabled),
     scheduleEnabled: schedule.enabled,
     schedule: {
-      items: schedule.items.map((item) => ({
+      entries: schedule.entries.map((item) => ({
         time: item.time,
-        openDurationMs: item.openDurationMs,
-        enabled: item.enabled
+        portionSize: item.portionSize,
+        daysOfWeek: item.daysOfWeek
       }))
     },
     latestConfigId: currentRow?.latest_config_id || null,
@@ -145,7 +147,7 @@ async function getScheduleRows(devicePk, executor = getPool(), lock = false) {
   }
 
   const [itemRows] = await executor.execute(
-    `SELECT id, schedule_id, meal_order, meal_id, time_of_day, open_duration_ms, enabled, created_at, updated_at
+    `SELECT id, schedule_id, meal_order, meal_id, time_of_day, portion_size, enabled, created_at, updated_at
      FROM feeding_schedule_items
      WHERE schedule_id = ?
      ORDER BY meal_order ASC, time_of_day ASC, id ASC`,
@@ -194,7 +196,7 @@ export async function saveDeviceCurrentConfig(deviceId, userId, input, context) 
     const currentRow = await getCurrentConfigRow(device.id, connection, true);
     const defaults = await getServerDefaultSettings(connection);
 
-    const wifiSsid = input.wifiSsid.trim();
+    const wifiSsid = input.wifiSsid !== null && input.wifiSsid !== undefined ? input.wifiSsid.trim() : null;
     const wifiPassword = Object.prototype.hasOwnProperty.call(input, 'wifiPassword')
       ? input.wifiPassword ?? ''
       : currentRow?.wifi_password ?? null;
@@ -293,8 +295,8 @@ export async function saveDeviceSchedule(deviceId, userId, input, context) {
     const timezone = normalizeTimezone(input.timezone, defaults.defaultTimezone);
     const timezoneOffsetSec = normalizeTimezoneOffset(input.timezoneOffsetSec, defaults.defaultTimezoneOffsetSec);
     const enabled = input.enabled !== false;
-    const normalizedItems = normalizeScheduleItems(input.items || []);
-    const scheduleJson = scheduleJsonFromInput({ enabled, items: normalizedItems });
+    const normalizedItems = normalizeScheduleItems(input.entries || []);
+    const scheduleJson = scheduleJsonFromInput({ enabled, entries: normalizedItems });
 
     const [scheduleResult] = await connection.execute(
       `INSERT INTO feeding_schedules (
@@ -325,7 +327,7 @@ export async function saveDeviceSchedule(deviceId, userId, input, context) {
           meal_order,
           meal_id,
           time_of_day,
-          open_duration_ms,
+          portion_size,
           enabled,
           created_at,
           updated_at
@@ -335,8 +337,8 @@ export async function saveDeviceSchedule(deviceId, userId, input, context) {
           index + 1,
           item.mealId || `meal_${index + 1}`,
           `${item.time}:00`,
-          item.openDurationMs,
-          item.enabled
+          item.portionSize,
+          true
         ]
       );
     }

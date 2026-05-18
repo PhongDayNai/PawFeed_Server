@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS feeding_schedule_items (
   meal_order INT NOT NULL,
   meal_id VARCHAR(100) NULL,
   time_of_day TIME NOT NULL,
-  open_duration_ms INT NOT NULL,
+  portion_size INT NOT NULL,
   enabled BOOLEAN DEFAULT TRUE,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NULL,
@@ -26,5 +26,5 @@ CREATE TABLE IF NOT EXISTS feeding_schedule_items (
   INDEX idx_feeding_schedule_items_schedule_id (schedule_id),
   INDEX idx_feeding_schedule_items_time_of_day (time_of_day),
   INDEX idx_feeding_schedule_items_enabled (enabled),
-  CONSTRAINT chk_feeding_schedule_open_duration CHECK (open_duration_ms BETWEEN 300 AND 10000)
+  CONSTRAINT chk_feeding_schedule_portion_size CHECK (portion_size BETWEEN 10 AND 200)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

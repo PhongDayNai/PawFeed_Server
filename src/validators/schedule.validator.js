@@ -24,12 +24,16 @@ export const scheduleItemSchema = z
       .string()
       .trim()
       .refine(isStrictTimeOfDay, 'Time must use strict HH:mm format.'),
-    openDurationMs: z.coerce
-      .number({ invalid_type_error: 'Open duration must be a number.' })
-      .int('Open duration must be an integer.')
-      .min(300, 'Open duration must be between 300 and 10000 ms.')
-      .max(10000, 'Open duration must be between 300 and 10000 ms.'),
-    enabled: z.boolean().optional().default(true)
+    portionSize: z.coerce
+      .number({ invalid_type_error: 'Portion size must be a number.' })
+      .int('Portion size must be an integer.')
+      .min(10, 'Portion size must be between 10 and 200 grams.')
+      .max(200, 'Portion size must be between 10 and 200 grams.'),
+    daysOfWeek: z
+      .array(z.number().int().min(0).max(6))
+      .min(1, 'At least one day must be specified.')
+      .optional()
+      .default([0, 1, 2, 3, 4, 5, 6])
   })
   .strict();
 
@@ -38,24 +42,26 @@ export const saveScheduleSchema = z
     enabled: z.boolean().optional().default(true),
     timezone: timezoneSchema.optional(),
     timezoneOffsetSec: timezoneOffsetSecSchema.optional(),
-    items: z.array(scheduleItemSchema).max(8, 'Schedule can contain at most 8 items.').optional().default([])
+    entries: z.array(scheduleItemSchema).max(8, 'Schedule can contain at most 8 entries.').optional().default([])
   })
   .strict()
   .superRefine((value, ctx) => {
-    const enabledTimes = new Map();
+    const entries = value.entries || [];
+    const timesByDay = new Map();
 
-    value.items.forEach((item, index) => {
-      if (!item.enabled) return;
-
-      if (enabledTimes.has(item.time)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Duplicated enabled schedule time: ${item.time}.`,
-          path: ['items', index, 'time']
-        });
-        return;
-      }
-
-      enabledTimes.set(item.time, index);
+    entries.forEach((item, index) => {
+      const days = item.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
+      days.forEach((day) => {
+        const key = `${day}-${item.time}`;
+        if (timesByDay.has(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Duplicated schedule entry: ${item.time} on day ${day}.`,
+            path: ['entries', index, 'time']
+          });
+          return;
+        }
+        timesByDay.set(key, index);
+      });
     });
   });
