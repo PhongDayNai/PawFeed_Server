@@ -18,7 +18,9 @@ export const wifiSsidSchema = z
   .string()
   .trim()
   .min(1, 'Wi-Fi SSID is required.')
-  .max(255, 'Wi-Fi SSID must be at most 255 characters.');
+  .max(255, 'Wi-Fi SSID must be at most 255 characters.')
+  .nullable()
+  .optional();
 
 export const wifiPasswordSchema = z
   .string()
@@ -40,6 +42,17 @@ export const optionalAddressNoteSchema = z
   .nullable()
   .optional();
 
+export const portionSizeSchema = z
+  .number({ invalid_type_error: 'Portion size must be a number.' })
+  .int('Portion size must be an integer.')
+  .min(10, 'Portion size must be between 10 and 200 grams.')
+  .max(200, 'Portion size must be between 10 and 200 grams.')
+  .optional();
+
+export const enableNotificationsSchema = z
+  .boolean()
+  .optional();
+
 export const saveCurrentConfigSchema = z
   .object({
     wifiSsid: wifiSsidSchema,
@@ -48,6 +61,8 @@ export const saveCurrentConfigSchema = z
     addressNote: optionalAddressNoteSchema,
     timezone: timezoneSchema.optional(),
     timezoneOffsetSec: timezoneOffsetSecSchema.optional(),
-    keepSetupApEnabled: z.boolean().optional().default(false)
+    keepSetupApEnabled: z.boolean().optional().default(false),
+    portionSize: portionSizeSchema,
+    enableNotifications: enableNotificationsSchema
   })
   .strict();
