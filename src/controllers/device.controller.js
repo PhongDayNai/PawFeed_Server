@@ -1,6 +1,7 @@
 import { sendCreated, sendSuccess } from '../utils/response.js';
 import {
   getUserDevice,
+  getUserDeviceMqttStatus,
   getUserDeviceStatus,
   linkDeviceToUser,
   listUserDevices,
@@ -38,6 +39,11 @@ export async function getDevice(req, res) {
 export async function getDeviceStatus(req, res) {
   const status = await getUserDeviceStatus(req.params.deviceId, req.user.id);
   return sendSuccess(res, status);
+}
+
+export async function getMqttStatus(req, res) {
+  const mqttStatus = await getUserDeviceMqttStatus(req.params.deviceId, req.user.id);
+  return sendSuccess(res, mqttStatus);
 }
 
 export async function patchDevice(req, res) {
