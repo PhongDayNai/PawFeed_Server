@@ -30,7 +30,7 @@ function normalizeScheduleItems(items = []) {
   return [...items]
     .map((item, index) => ({
       time: String(item.time).slice(0, 5),
-      portionSize: Number(item.portionSize),
+      openDurationMs: Number(item.openDurationMs),
       daysOfWeek: Array.isArray(item.daysOfWeek) ? item.daysOfWeek : [0, 1, 2, 3, 4, 5, 6],
       mealOrder: Number(item.mealOrder || index + 1),
       mealId: item.mealId || `meal_${index + 1}`
@@ -44,7 +44,7 @@ function scheduleJsonFromInput(schedule) {
     items: normalizeScheduleItems(schedule.entries || []).map((item, index) => ({
       id: item.mealId || `meal_${index + 1}`,
       time: item.time,
-      portionSize: item.portionSize,
+      openDurationMs: item.openDurationMs,
       daysOfWeek: item.daysOfWeek,
       enabled: true
     }))
@@ -60,7 +60,7 @@ function toScheduleResponse(scheduleRow, itemRows = [], deviceId = undefined, de
     mealId: row.meal_id,
     mealOrder: Number(row.meal_order),
     time: String(row.time_of_day).slice(0, 5),
-    portionSize: Number(row.portion_size),
+    openDurationMs: Number(row.open_duration_ms),
     daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
     enabled: toBoolean(row.enabled)
   }));
@@ -93,7 +93,7 @@ function toCurrentConfigResponse(deviceRow, currentRow, schedule, defaults = {})
     schedule: {
       entries: schedule.entries.map((item) => ({
         time: item.time,
-        portionSize: item.portionSize,
+        openDurationMs: item.openDurationMs,
         daysOfWeek: item.daysOfWeek
       }))
     },
@@ -147,7 +147,7 @@ async function getScheduleRows(devicePk, executor = getPool(), lock = false) {
   }
 
   const [itemRows] = await executor.execute(
-    `SELECT id, schedule_id, meal_order, meal_id, time_of_day, portion_size, enabled, created_at, updated_at
+    `SELECT id, schedule_id, meal_order, meal_id, time_of_day, open_duration_ms, enabled, created_at, updated_at
      FROM feeding_schedule_items
      WHERE schedule_id = ?
      ORDER BY meal_order ASC, time_of_day ASC, id ASC`,
@@ -327,7 +327,7 @@ export async function saveDeviceSchedule(deviceId, userId, input, context) {
           meal_order,
           meal_id,
           time_of_day,
-          portion_size,
+          open_duration_ms,
           enabled,
           created_at,
           updated_at
@@ -337,7 +337,7 @@ export async function saveDeviceSchedule(deviceId, userId, input, context) {
           index + 1,
           item.mealId || `meal_${index + 1}`,
           `${item.time}:00`,
-          item.portionSize,
+          item.openDurationMs,
           true
         ]
       );

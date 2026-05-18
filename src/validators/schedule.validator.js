@@ -24,11 +24,11 @@ export const scheduleItemSchema = z
       .string()
       .trim()
       .refine(isStrictTimeOfDay, 'Time must use strict HH:mm format.'),
-    portionSize: z.coerce
-      .number({ invalid_type_error: 'Portion size must be a number.' })
-      .int('Portion size must be an integer.')
-      .min(10, 'Portion size must be between 10 and 200 grams.')
-      .max(200, 'Portion size must be between 10 and 200 grams.'),
+    openDurationMs: z.coerce
+      .number({ invalid_type_error: 'Open duration must be a number.' })
+      .int('Open duration must be an integer.')
+      .min(300, 'Open duration must be at least 300 ms.')
+      .max(10000, 'Open duration must be at most 10000 ms.'),
     daysOfWeek: z
       .array(z.number().int().min(0).max(6))
       .min(1, 'At least one day must be specified.')

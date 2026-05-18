@@ -42,11 +42,11 @@ export const optionalAddressNoteSchema = z
   .nullable()
   .optional();
 
-export const portionSizeSchema = z
-  .number({ invalid_type_error: 'Portion size must be a number.' })
-  .int('Portion size must be an integer.')
-  .min(10, 'Portion size must be between 10 and 200 grams.')
-  .max(200, 'Portion size must be between 10 and 200 grams.')
+export const openDurationMsSchema = z
+  .number({ invalid_type_error: 'Open duration must be a number.' })
+  .int('Open duration must be an integer.')
+  .min(300, 'Open duration must be at least 300 ms.')
+  .max(10000, 'Open duration must be at most 10000 ms.')
   .optional();
 
 export const enableNotificationsSchema = z
@@ -62,7 +62,7 @@ export const saveCurrentConfigSchema = z
     timezone: timezoneSchema.optional(),
     timezoneOffsetSec: timezoneOffsetSecSchema.optional(),
     keepSetupApEnabled: z.boolean().optional().default(false),
-    portionSize: portionSizeSchema,
+    openDurationMs: openDurationMsSchema,
     enableNotifications: enableNotificationsSchema
   })
   .strict();
