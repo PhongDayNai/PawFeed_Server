@@ -7,6 +7,6 @@ import { updateProfile } from '../controllers/account.controller.js';
 
 const router = Router();
 
-router.patch('/account/profile', authenticate, validateBody(updateProfileSchema), asyncHandler(updateProfile));
+router.patch('/profile', authenticate, validateBody(updateProfileSchema), asyncHandler(updateProfile));
 
 export default router;

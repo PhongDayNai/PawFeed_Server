@@ -10,6 +10,7 @@ import {
 import {
   getDevice,
   getDeviceStatus,
+  getMqttStatus,
   linkDevice,
   listDevices,
   patchDevice,
@@ -59,33 +60,34 @@ import {
 
 const router = Router();
 
-router.use('/devices', authenticate);
+router.use('/', authenticate);
 
-router.post('/devices/link', linkDeviceRateLimiter, validateBody(linkDeviceSchema), asyncHandler(linkDevice));
-router.get('/devices', validateQuery(listUserDevicesQuerySchema), asyncHandler(listDevices));
-router.get('/devices/:deviceId/status', validateParams(deviceParamsSchema), asyncHandler(getDeviceStatus));
-router.get('/devices/:deviceId/current-config', validateParams(deviceParamsSchema), asyncHandler(getCurrentConfig));
+router.post('/link', linkDeviceRateLimiter, validateBody(linkDeviceSchema), asyncHandler(linkDevice));
+router.get('/', validateQuery(listUserDevicesQuerySchema), asyncHandler(listDevices));
+router.get('/:deviceId/status', validateParams(deviceParamsSchema), asyncHandler(getDeviceStatus));
+router.get('/:deviceId/mqtt-status', validateParams(deviceParamsSchema), asyncHandler(getMqttStatus));
+router.get('/:deviceId/current-config', validateParams(deviceParamsSchema), asyncHandler(getCurrentConfig));
 router.put(
-  '/devices/:deviceId/current-config',
+  '/:deviceId/current-config',
   validateParams(deviceParamsSchema),
   validateBody(saveCurrentConfigSchema),
   asyncHandler(putCurrentConfig)
 );
-router.get('/devices/:deviceId/schedule', validateParams(deviceParamsSchema), asyncHandler(getSchedule));
+router.get('/:deviceId/schedule', validateParams(deviceParamsSchema), asyncHandler(getSchedule));
 router.put(
-  '/devices/:deviceId/schedule',
+  '/:deviceId/schedule',
   validateParams(deviceParamsSchema),
   validateBody(saveScheduleSchema),
   asyncHandler(putSchedule)
 );
 router.get(
-  '/devices/:deviceId/schedule/apply-status',
+  '/:deviceId/schedule/apply-status',
   validateParams(deviceParamsSchema),
   asyncHandler(getScheduleApplyStatus)
 );
 
 router.post(
-  '/devices/:deviceId/config-file',
+  '/:deviceId/config-file',
   configGenerationRateLimiter,
   validateParams(deviceParamsSchema),
   validateQuery(configFileQuerySchema),
@@ -93,7 +95,7 @@ router.post(
   asyncHandler(createConfigFile)
 );
 router.post(
-  '/devices/:deviceId/config-file/regenerate',
+  '/:deviceId/config-file/regenerate',
   configGenerationRateLimiter,
   validateParams(deviceParamsSchema),
   validateQuery(configFileQuerySchema),
@@ -101,49 +103,49 @@ router.post(
 );
 
 router.post(
-  '/devices/:deviceId/commands/feed-now',
+  '/:deviceId/commands/feed-now',
   feedNowRateLimiter,
   validateParams(deviceParamsSchema),
   validateBody(feedNowBodySchema),
   asyncHandler(feedNow)
 );
 router.get(
-  '/devices/:deviceId/commands',
+  '/:deviceId/commands',
   validateParams(deviceParamsSchema),
   validateQuery(listCommandsQuerySchema),
   asyncHandler(listCommands)
 );
 router.get(
-  '/devices/:deviceId/commands/:requestId',
+  '/:deviceId/commands/:requestId',
   validateParams(commandParamsSchema),
   asyncHandler(getCommandStatus)
 );
 
 router.get(
-  '/devices/:deviceId/events',
+  '/:deviceId/events',
   validateParams(deviceParamsSchema),
   validateQuery(listDeviceEventsQuerySchema),
   asyncHandler(getUserDeviceEvents)
 );
 router.get(
-  '/devices/:deviceId/feeding-history',
+  '/:deviceId/feeding-history',
   validateParams(deviceParamsSchema),
   validateQuery(listFeedingHistoryQuerySchema),
   asyncHandler(getUserFeedingHistory)
 );
 router.get(
-  '/devices/:deviceId/config-generations',
+  '/:deviceId/config-generations',
   validateParams(deviceParamsSchema),
   validateQuery(listConfigGenerationsQuerySchema),
   asyncHandler(getUserConfigGenerations)
 );
-router.get('/devices/:deviceId', validateParams(deviceParamsSchema), asyncHandler(getDevice));
+router.get('/:deviceId', validateParams(deviceParamsSchema), asyncHandler(getDevice));
 router.patch(
-  '/devices/:deviceId',
+  '/:deviceId',
   validateParams(deviceParamsSchema),
   validateBody(updateUserDeviceSchema),
   asyncHandler(patchDevice)
 );
-router.post('/devices/:deviceId/unlink', validateParams(deviceParamsSchema), asyncHandler(unlinkDevice));
+router.post('/:deviceId/unlink', validateParams(deviceParamsSchema), asyncHandler(unlinkDevice));
 
 export default router;

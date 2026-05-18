@@ -20,6 +20,9 @@ import dashboardRoutes from './routes/dashboard.routes.js';
 import devRoutes from './routes/dev.routes.js';
 import { sendSuccess } from './utils/response.js';
 
+import { redirectLegacy } from './middleware/redirectLegacy.js';
+import v1Routes from './routes/v1.routes.js';
+
 export function createApp() {
   const app = express();
 
@@ -46,21 +49,16 @@ export function createApp() {
     sendSuccess(res, {
       service: env.appName,
       version: env.appVersion,
-      message: 'Pet Feeder Server is running. Use GET /api/health for health check.'
+      message: 'Pet Feeder Server is running. Use GET /v1/health for health check.'
     });
   });
 
-  app.use('/api', apiRateLimiter);
-  app.use('/api', healthRoutes);
-  app.use('/api', authRoutes);
-  app.use('/api', accountRoutes);
-  app.use('/api', dashboardRoutes);
-  app.use('/api', deviceRoutes);
-  app.use('/api', adminRoutes);
+  // Legacy redirect /api/* → /v1/*
+  app.use(redirectLegacy);
 
-  if (env.enableDevErrorRoute && !env.isProduction) {
-    app.use('/api/dev', devRoutes);
-  }
+  // V1 routes
+  app.use('/v1', apiRateLimiter);
+  app.use('/v1', v1Routes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

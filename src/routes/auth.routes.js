@@ -20,11 +20,11 @@ import {
 
 const router = Router();
 
-router.post('/auth/register', authRateLimiter, validateBody(registerSchema), asyncHandler(register));
-router.post('/auth/login', authRateLimiter, validateBody(loginSchema), asyncHandler(login));
-router.post('/auth/refresh', authRateLimiter, validateBody(refreshSchema), asyncHandler(refresh));
-router.post('/auth/logout', authenticate, asyncHandler(logout));
-router.get('/auth/me', authenticate, asyncHandler(me));
-router.post('/auth/change-password', authenticate, authRateLimiter, validateBody(changePasswordSchema), asyncHandler(changePassword));
+router.post('/register', authRateLimiter, validateBody(registerSchema), asyncHandler(register));
+router.post('/login', authRateLimiter, validateBody(loginSchema), asyncHandler(login));
+router.post('/refresh', authRateLimiter, validateBody(refreshSchema), asyncHandler(refresh));
+router.post('/logout', authenticate, asyncHandler(logout));
+router.get('/me', authenticate, asyncHandler(me));
+router.post('/change-password', authenticate, authRateLimiter, validateBody(changePasswordSchema), asyncHandler(changePassword));
 
 export default router;
