@@ -232,7 +232,7 @@ export async function listUserDeviceEvents(deviceId, userId, query = {}) {
     `${deviceEventSelectSql()}
      ${whereSql}
      ORDER BY e.created_at DESC, e.id DESC
-     LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+     LIMIT ${pagination.pageSize} OFFSET ${pagination.offset}`,
     values
   );
 
@@ -240,8 +240,8 @@ export async function listUserDeviceEvents(deviceId, userId, query = {}) {
     items: rows.map(toDeviceEvent),
     pagination: buildPaginationMeta({
       page: pagination.page,
-      limit: pagination.limit,
-      total: Number(countRows[0]?.total || 0)
+      pageSize: pagination.pageSize,
+      totalItems: Number(countRows[0]?.total || 0)
     })
   };
 }
@@ -291,7 +291,7 @@ export async function listAdminDeviceEvents(query = {}) {
     `${deviceEventSelectSql()}
      ${whereSql}
      ORDER BY e.created_at DESC, e.id DESC
-     LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+     LIMIT ${pagination.pageSize} OFFSET ${pagination.offset}`,
     values
   );
 
@@ -299,8 +299,8 @@ export async function listAdminDeviceEvents(query = {}) {
     items: rows.map(toDeviceEvent),
     pagination: buildPaginationMeta({
       page: pagination.page,
-      limit: pagination.limit,
-      total: Number(countRows[0]?.total || 0)
+      pageSize: pagination.pageSize,
+      totalItems: Number(countRows[0]?.total || 0)
     })
   };
 }
@@ -345,7 +345,7 @@ export async function listUserFeedingHistory(deviceId, userId, query = {}) {
     `${feedingHistorySelectSql()}
      ${whereSql}
      ORDER BY COALESCE(h.finished_at, h.started_at, h.created_at) DESC, h.id DESC
-     LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+     LIMIT ${pagination.pageSize} OFFSET ${pagination.offset}`,
     values
   );
 
@@ -353,8 +353,8 @@ export async function listUserFeedingHistory(deviceId, userId, query = {}) {
     items: rows.map(toFeedingHistory),
     pagination: buildPaginationMeta({
       page: pagination.page,
-      limit: pagination.limit,
-      total: Number(countRows[0]?.total || 0)
+      pageSize: pagination.pageSize,
+      totalItems: Number(countRows[0]?.total || 0)
     })
   };
 }
@@ -404,7 +404,7 @@ export async function listAdminFeedingHistories(query = {}) {
     `${feedingHistorySelectSql()}
      ${whereSql}
      ORDER BY COALESCE(h.finished_at, h.started_at, h.created_at) DESC, h.id DESC
-     LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+     LIMIT ${pagination.pageSize} OFFSET ${pagination.offset}`,
     values
   );
 
@@ -412,8 +412,8 @@ export async function listAdminFeedingHistories(query = {}) {
     items: rows.map(toFeedingHistory),
     pagination: buildPaginationMeta({
       page: pagination.page,
-      limit: pagination.limit,
-      total: Number(countRows[0]?.total || 0)
+      pageSize: pagination.pageSize,
+      totalItems: Number(countRows[0]?.total || 0)
     })
   };
 }
@@ -449,7 +449,7 @@ export async function listUserConfigGenerations(deviceId, userId, query = {}) {
     `${configGenerationSelectSql()}
      ${whereSql}
      ORDER BY g.config_version DESC, g.id DESC
-     LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+     LIMIT ${pagination.pageSize} OFFSET ${pagination.offset}`,
     values
   );
 
@@ -457,8 +457,8 @@ export async function listUserConfigGenerations(deviceId, userId, query = {}) {
     items: rows.map((row) => toConfigGeneration(row, { includeAdminFields: false })),
     pagination: buildPaginationMeta({
       page: pagination.page,
-      limit: pagination.limit,
-      total: Number(countRows[0]?.total || 0)
+      pageSize: pagination.pageSize,
+      totalItems: Number(countRows[0]?.total || 0)
     })
   };
 }
@@ -499,7 +499,7 @@ export async function listAdminConfigGenerations(query = {}) {
     `${configGenerationSelectSql()}
      ${whereSql}
      ORDER BY g.created_at DESC, g.id DESC
-     LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+     LIMIT ${pagination.pageSize} OFFSET ${pagination.offset}`,
     values
   );
 
@@ -507,8 +507,8 @@ export async function listAdminConfigGenerations(query = {}) {
     items: rows.map((row) => toConfigGeneration(row, { includeAdminFields: true })),
     pagination: buildPaginationMeta({
       page: pagination.page,
-      limit: pagination.limit,
-      total: Number(countRows[0]?.total || 0)
+      pageSize: pagination.pageSize,
+      totalItems: Number(countRows[0]?.total || 0)
     })
   };
 }

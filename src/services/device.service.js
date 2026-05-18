@@ -210,6 +210,34 @@ export async function linkDeviceToUser(input, context) {
       throw forbiddenError('Device is not available for linking.', 'DEVICE_NOT_AVAILABLE');
     }
 
+    if (device.claim_code_used_at) {
+      await insertLinkHistory({
+        devicePk: device.id,
+        userId,
+        machineCode: device.machine_code,
+        pairingCode,
+        action: 'failed_pairing_code_used',
+        clientIp: context.clientIp,
+        userAgent: context.userAgent,
+        connection
+      });
+      throw conflictError('Mã ghép nối này đã được sử dụng.', 'PAIRING_CODE_ALREADY_USED');
+    }
+
+    if (!device.claim_code || !isSamePairingCode(pairingCode, device.claim_code)) {
+      await insertLinkHistory({
+        devicePk: device.id,
+        userId,
+        machineCode: device.machine_code,
+        pairingCode,
+        action: 'failed_invalid_pairing_code',
+        clientIp: context.clientIp,
+        userAgent: context.userAgent,
+        connection
+      });
+      throw badRequestError('Mã ghép nối không đúng.', 'INVALID_PAIRING_CODE');
+    }
+
     if (device.owner_user_id && Number(device.owner_user_id) === Number(userId)) {
       await insertLinkHistory({
         devicePk: device.id,
@@ -242,34 +270,6 @@ export async function linkDeviceToUser(input, context) {
         connection
       });
       throw conflictError('Thiết bị này đã được liên kết với tài khoản khác.', 'DEVICE_ALREADY_LINKED');
-    }
-
-    if (!device.claim_code || !isSamePairingCode(pairingCode, device.claim_code)) {
-      await insertLinkHistory({
-        devicePk: device.id,
-        userId,
-        machineCode: device.machine_code,
-        pairingCode,
-        action: 'failed_invalid_pairing_code',
-        clientIp: context.clientIp,
-        userAgent: context.userAgent,
-        connection
-      });
-      throw badRequestError('Mã ghép nối không đúng.', 'INVALID_PAIRING_CODE');
-    }
-
-    if (device.claim_code_used_at) {
-      await insertLinkHistory({
-        devicePk: device.id,
-        userId,
-        machineCode: device.machine_code,
-        pairingCode,
-        action: 'failed_pairing_code_used',
-        clientIp: context.clientIp,
-        userAgent: context.userAgent,
-        connection
-      });
-      throw conflictError('Mã ghép nối này đã được sử dụng.', 'PAIRING_CODE_ALREADY_USED');
     }
 
     await connection.execute(
@@ -353,7 +353,7 @@ export async function listUserDevices(userId, query = {}) {
     `${baseUserDeviceSelect()}
      ${whereSql}
      ORDER BY COALESCE(ls.last_seen_at, d.last_seen_at, d.updated_at, d.created_at) DESC, d.id DESC
-     LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+     LIMIT ${pagination.pageSize} OFFSET ${pagination.offset}`,
     values
   );
 
@@ -361,8 +361,8 @@ export async function listUserDevices(userId, query = {}) {
     items: rows.map((row) => toUserDevice(row)),
     pagination: buildPaginationMeta({
       page: pagination.page,
-      limit: pagination.limit,
-      total: Number(countRows[0]?.total || 0)
+      pageSize: pagination.pageSize,
+      totalItems: Number(countRows[0]?.total || 0)
     })
   };
 }
@@ -494,4 +494,50 @@ export async function unlinkUserDevice(deviceId, userId, context) {
   } finally {
     connection.release();
   }
+}
+
+export async function getUserDeviceMqttStatus(deviceId, userId) {
+  const device = await assertOwnedDevice(deviceId, userId);
+  const normalizedDeviceId = normalizeDeviceId(deviceId);
+
+  // Get MQTT credentials for this device
+  const [credRows] = await getPool().execute(
+    `SELECT c.mqtt_server_id, c.is_active, c.mqtt_username,
+            ms.name AS mqtt_server_name, ms.host, ms.mqtt_port, ms.is_active AS server_active
+     FROM device_mqtt_credentials c
+     INNER JOIN mqtt_servers ms ON ms.id = c.mqtt_server_id
+     WHERE c.device_id = ? AND c.is_active = TRUE
+     LIMIT 1`,
+    [device.id]
+  );
+
+  const cred = credRows[0];
+
+  // Get MQTT connection status from device_latest_status
+  const [statusRows] = await getPool().execute(
+    `SELECT server_connected, last_seen_at
+     FROM device_latest_status
+     WHERE device_id = ?
+     LIMIT 1`,
+    [device.id]
+  );
+
+  const status = statusRows[0];
+  const mqttConnected = status ? toBoolean(status.server_connected) : false;
+
+  if (!cred) {
+    return {
+      deviceId: normalizedDeviceId,
+      mqttConnected,
+      mqttServerId: null,
+      mqttServerName: null
+    };
+  }
+
+  return {
+    deviceId: normalizedDeviceId,
+    mqttConnected,
+    mqttServerId: Number(cred.mqtt_server_id),
+    mqttServerName: cred.mqtt_server_name || null
+  };
 }

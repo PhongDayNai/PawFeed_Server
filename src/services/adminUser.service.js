@@ -37,7 +37,7 @@ async function findUserById(userId, executor = getPool()) {
 }
 
 export async function listAdminUsers(query = {}) {
-  const { page, limit, offset } = paginationFromQuery(query);
+  const { page, pageSize, offset } = paginationFromQuery(query);
   const conditions = [];
   const values = [];
 
@@ -62,13 +62,13 @@ export async function listAdminUsers(query = {}) {
   const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const [countRows] = await getPool().execute(`SELECT COUNT(*) AS total FROM users ${whereSql}`, values);
   const [rows] = await getPool().execute(
-    `${SAFE_USER_SELECT} ${whereSql} ORDER BY created_at DESC, id DESC LIMIT ${limit} OFFSET ${offset}`,
+    `${SAFE_USER_SELECT} ${whereSql} ORDER BY created_at DESC, id DESC LIMIT ${pageSize} OFFSET ${offset}`,
     values
   );
 
   return {
     users: rows.map(toAdminUser),
-    meta: buildPaginationMeta({ page, limit, total: Number(countRows[0]?.total || 0) })
+    meta: buildPaginationMeta({ page, pageSize, totalItems: Number(countRows[0]?.total || 0) })
   };
 }
 

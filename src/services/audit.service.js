@@ -191,7 +191,7 @@ const AUDIT_SELECT = `
 `;
 
 export async function listAuditLogs(query = {}) {
-  const { page, limit, offset } = paginationFromQuery(query);
+  const { page, pageSize, offset } = paginationFromQuery(query);
   const { whereSql, values } = buildAuditWhere(query);
 
   const [countRows] = await getPool().execute(
@@ -202,13 +202,13 @@ export async function listAuditLogs(query = {}) {
     `${AUDIT_SELECT}
      ${whereSql}
      ORDER BY a.created_at DESC, a.id DESC
-     LIMIT ${limit} OFFSET ${offset}`,
+     LIMIT ${pageSize} OFFSET ${offset}`,
     values
   );
 
   return {
     logs: rows.map(toAuditLog),
-    meta: buildPaginationMeta({ page, limit, total: Number(countRows[0]?.total || 0) })
+    meta: buildPaginationMeta({ page, pageSize, totalItems: Number(countRows[0]?.total || 0) })
   };
 }
 

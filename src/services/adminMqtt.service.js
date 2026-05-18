@@ -55,7 +55,7 @@ async function getMqttServerRow(id, executor = getPool()) {
 }
 
 export async function listMqttServers(query = {}) {
-  const { page, limit, offset } = paginationFromQuery(query);
+  const { page, pageSize, offset } = paginationFromQuery(query);
   const conditions = [];
   const values = [];
   if (query.search) {
@@ -69,8 +69,8 @@ export async function listMqttServers(query = {}) {
   }
   const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const [countRows] = await getPool().execute(`SELECT COUNT(*) AS total FROM mqtt_servers ${whereSql}`, values);
-  const [rows] = await getPool().execute(`SELECT * FROM mqtt_servers ${whereSql} ORDER BY id DESC LIMIT ${limit} OFFSET ${offset}`, values);
-  return { servers: rows.map(toMqttServer), meta: buildPaginationMeta({ page, limit, total: Number(countRows[0]?.total || 0) }) };
+  const [rows] = await getPool().execute(`SELECT * FROM mqtt_servers ${whereSql} ORDER BY id DESC LIMIT ${pageSize} OFFSET ${offset}`, values);
+  return { servers: rows.map(toMqttServer), meta: buildPaginationMeta({ page, pageSize, totalItems: Number(countRows[0]?.total || 0) }) };
 }
 
 export async function createMqttServer(input, context = {}) {

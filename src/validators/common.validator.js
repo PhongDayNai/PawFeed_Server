@@ -35,11 +35,11 @@ export const paginationQuerySchema = z.object({
     .positive('Page must be greater than 0.')
     .optional()
     .default(1),
-  limit: z.coerce
-    .number({ invalid_type_error: 'Limit must be a number.' })
-    .int('Limit must be an integer.')
-    .positive('Limit must be greater than 0.')
-    .max(100, 'Limit must be at most 100.')
+  pageSize: z.coerce
+    .number({ invalid_type_error: 'Page size must be a number.' })
+    .int('Page size must be an integer.')
+    .positive('Page size must be greater than 0.')
+    .max(100, 'Page size must be at most 100.')
     .optional()
     .default(20)
 });

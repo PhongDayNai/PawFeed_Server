@@ -245,7 +245,7 @@ export async function listUserCommands(deviceId, userId, query = {}) {
     `${commandSelectSql()}
      ${whereSql}
      ORDER BY c.created_at DESC, c.id DESC
-     LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+     LIMIT ${pagination.pageSize} OFFSET ${pagination.offset}`,
     values
   );
 
@@ -253,8 +253,8 @@ export async function listUserCommands(deviceId, userId, query = {}) {
     items: rows.map(toCommand),
     pagination: buildPaginationMeta({
       page: pagination.page,
-      limit: pagination.limit,
-      total: Number(countRows[0]?.total || 0)
+      pageSize: pagination.pageSize,
+      totalItems: Number(countRows[0]?.total || 0)
     })
   };
 }
@@ -307,7 +307,7 @@ export async function listAdminCommands(query = {}) {
     `${commandSelectSql()}
      ${whereSql}
      ORDER BY c.created_at DESC, c.id DESC
-     LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+     LIMIT ${pagination.pageSize} OFFSET ${pagination.offset}`,
     values
   );
 
@@ -315,8 +315,8 @@ export async function listAdminCommands(query = {}) {
     items: rows.map(toCommand),
     pagination: buildPaginationMeta({
       page: pagination.page,
-      limit: pagination.limit,
-      total: Number(countRows[0]?.total || 0)
+      pageSize: pagination.pageSize,
+      totalItems: Number(countRows[0]?.total || 0)
     })
   };
 }

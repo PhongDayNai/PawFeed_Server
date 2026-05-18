@@ -353,7 +353,7 @@ export async function createAdminDevice(input, context) {
 
 export async function listAdminDevices(query = {}) {
   const pool = getPool();
-  const { page, limit, offset } = paginationFromQuery(query);
+  const { page, pageSize, offset } = paginationFromQuery(query);
 
   const where = [];
   const values = [];
@@ -388,14 +388,14 @@ export async function listAdminDevices(query = {}) {
     `${baseDeviceSelect()}
      ${whereSql}
      ORDER BY d.created_at DESC, d.id DESC
-     LIMIT ${limit} OFFSET ${offset}`,
+     LIMIT ${pageSize} OFFSET ${offset}`,
     values
   );
 
   const total = Number(countRows[0]?.total || 0);
   return {
     devices: rows.map((row) => toAdminDevice(row)),
-    meta: buildPaginationMeta({ page, limit, total })
+    meta: buildPaginationMeta({ page, pageSize, totalItems: total })
   };
 }
 
@@ -667,7 +667,7 @@ export async function transferAdminDeviceOwner(deviceId, input, context = {}) {
 export async function listAdminDeviceLinkAttempts(deviceId, query = {}) {
   const row = await findAdminDeviceByDeviceId(deviceId);
   if (!row) throw notFoundError('Device was not found.', 'DEVICE_NOT_FOUND');
-  const { page, limit, offset } = paginationFromQuery(query);
+  const { page, pageSize, offset } = paginationFromQuery(query);
 
   const [countRows] = await getPool().execute(
     `SELECT COUNT(*) AS total FROM device_link_histories WHERE device_id = ? OR machine_code = ?`,
@@ -679,7 +679,7 @@ export async function listAdminDeviceLinkAttempts(deviceId, query = {}) {
      LEFT JOIN users u ON u.id = h.user_id
      WHERE h.device_id = ? OR h.machine_code = ?
      ORDER BY h.created_at DESC, h.id DESC
-     LIMIT ${limit} OFFSET ${offset}`,
+     LIMIT ${pageSize} OFFSET ${offset}`,
     [row.id, row.machine_code]
   );
 
@@ -695,6 +695,6 @@ export async function listAdminDeviceLinkAttempts(deviceId, query = {}) {
       userAgent: item.user_agent || null,
       createdAt: toIso(item.created_at)
     })),
-    meta: buildPaginationMeta({ page, limit, total: Number(countRows[0]?.total || 0) })
+    meta: buildPaginationMeta({ page, pageSize, totalItems: Number(countRows[0]?.total || 0) })
   };
 }
