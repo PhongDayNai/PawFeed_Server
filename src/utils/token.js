@@ -1,6 +1,11 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { env } from '../config/env.js';
 import { unauthorizedError } from './errors.js';
+
+function generateJti() {
+  return crypto.randomUUID();
+}
 
 function signToken(payload, secret, expiresIn) {
   return jwt.sign(payload, secret, {
@@ -42,16 +47,21 @@ export function createAccessToken(user) {
 }
 
 export function createRefreshToken(user) {
-  return signToken(
-    {
-      type: 'refresh',
-      sub: String(user.id),
-      email: user.email,
-      role: user.role
-    },
-    env.auth.jwtRefreshSecret,
-    env.auth.jwtRefreshExpiresIn
-  );
+  const jti = generateJti();
+  return {
+    token: signToken(
+      {
+        type: 'refresh',
+        sub: String(user.id),
+        email: user.email,
+        role: user.role,
+        jti
+      },
+      env.auth.jwtRefreshSecret,
+      env.auth.jwtRefreshExpiresIn
+    ),
+    jti
+  };
 }
 
 export function verifyAccessToken(token) {

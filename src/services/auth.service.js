@@ -7,6 +7,7 @@ import {
   unauthorizedError
 } from '../utils/errors.js';
 import { normalizeEmail, toPublicUser } from '../utils/user.js';
+import { addToDenylist, isInDenylist } from './tokenDenylist.service.js';
 import {
   createAccessToken,
   createRefreshToken,
@@ -42,11 +43,12 @@ function assertUserCanLogin(user) {
 
 export function createAuthPayload(user) {
   const publicUser = toPublicUser(user);
+  const refresh = createRefreshToken(publicUser);
   return {
     user: publicUser,
     tokenType: 'Bearer',
     accessToken: createAccessToken(publicUser),
-    refreshToken: createRefreshToken(publicUser),
+    refreshToken: refresh.token,
     accessTokenExpiresIn: env.auth.jwtAccessExpiresIn,
     refreshTokenExpiresIn: env.auth.jwtRefreshExpiresIn
   };
@@ -87,8 +89,15 @@ export async function loginUser({ email, password }, req) {
 
 export async function refreshAuthTokens(refreshToken) {
   const payload = verifyRefreshToken(refreshToken);
+
+  if (await isInDenylist(payload.jti)) {
+    throw unauthorizedError('Token has been revoked.', 'TOKEN_REVOKED');
+  }
+
   const user = await findUserById(payload.sub);
   assertUserCanLogin(user);
+
+  await addToDenylist(payload.jti);
 
   return createAuthPayload(user);
 }
