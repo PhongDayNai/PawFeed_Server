@@ -60,7 +60,18 @@ export function requireHttpsMiddleware(req, res, next) {
 
 export function createHelmetMiddleware() {
   return helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'"],
+        imgSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: []
+      }
+    },
     crossOriginEmbedderPolicy: false,
     hsts: env.isProduction
       ? {
@@ -69,7 +80,10 @@ export function createHelmetMiddleware() {
           preload: false
         }
       : false,
-    referrerPolicy: { policy: 'no-referrer' }
+    referrerPolicy: { policy: 'no-referrer' },
+    noSniff: true,
+    frameguard: { action: 'deny' },
+    xssProtection: '1; mode=block'
   });
 }
 
