@@ -508,13 +508,15 @@ async function persistGeneratedConfig({
   });
 }
 
-function prepareInputFromRequest(input, defaults) {
+function prepareInputFromRequest(input, defaults, currentRow) {
   const feedingSchedule = normalizeFeedingSchedule(input.feedingSchedule || { enabled: false, items: [] });
+  const wifiSsidFromRequest = input.wifiSsid !== undefined && input.wifiSsid !== null ? input.wifiSsid.trim() : null;
+  const wifiSsid = wifiSsidFromRequest || (currentRow?.wifi_ssid || null);
   return {
-    wifiSsid: input.wifiSsid.trim(),
-    wifiPassword: input.wifiPassword ?? '',
-    address: emptyToNull(input.address),
-    addressNote: emptyToNull(input.addressNote),
+    wifiSsid,
+    wifiPassword: input.wifiPassword ?? (currentRow?.wifi_password ?? ''),
+    address: emptyToNull(input.address) ?? (currentRow?.address || null),
+    addressNote: emptyToNull(input.addressNote) ?? (currentRow?.address_note || null),
     timezone: normalizeTimezone(input.timezone, defaults.defaultTimezone),
     timezoneOffsetSec: normalizeTimezoneOffset(input.timezoneOffsetSec, defaults.defaultTimezoneOffsetSec),
     keepSetupApEnabled: input.keepSetupApEnabled ?? defaults.defaultKeepSetupApEnabled,
@@ -563,7 +565,7 @@ async function generateConfigFileInternal({ deviceId, userId, input, context, re
     const savedSchedule = await getSavedSchedule(device.id, currentRow, connection);
     const preparedInput = regenerate
       ? prepareInputFromCurrent(currentRow, savedSchedule, defaults)
-      : prepareInputFromRequest(input, defaults);
+      : prepareInputFromRequest(input, defaults, currentRow);
 
     const latestGenerationVersion = await getLatestGenerationVersion(device.id, connection, true);
     const configVersion = computeNextConfigVersion(device, currentRow, latestGenerationVersion);
@@ -661,6 +663,9 @@ export async function listConfigGenerations(deviceId, userId, { page = 1, limit 
       schedule_enabled,
       schedule_item_count,
       status,
+      revoked_at,
+      revoked_reason,
+      applied_at,
       created_at
      FROM device_config_generations
      WHERE device_id = ?
@@ -685,6 +690,9 @@ export async function listConfigGenerations(deviceId, userId, { page = 1, limit 
       scheduleEnabled: toBoolean(row.schedule_enabled),
       scheduleItemCount: Number(row.schedule_item_count || 0),
       status: row.status,
+      revokedAt: toIso(row.revoked_at),
+      revokedReason: row.revoked_reason,
+      appliedAt: toIso(row.applied_at),
       createdAt: toIso(row.created_at)
     })),
     pagination: {
@@ -694,6 +702,209 @@ export async function listConfigGenerations(deviceId, userId, { page = 1, limit 
       totalPages: Math.ceil(Number(countRow?.total || 0) / normalizedLimit)
     }
   };
+}
+
+async function getConfigGenerationByConfigId(devicePk, configId, executor, lock = false) {
+  const [rows] = await executor.execute(
+    `SELECT
+      id,
+      device_id,
+      config_id,
+      config_version,
+      status,
+      expires_at,
+      revoked_at,
+      revoked_reason,
+      applied_at,
+      created_at
+     FROM device_config_generations
+     WHERE device_id = ? AND config_id = ?
+     LIMIT 1${lock ? ' FOR UPDATE' : ''}`,
+    [devicePk, configId]
+  );
+  return rows[0] || null;
+}
+
+export async function confirmConfigFile(deviceId, userId, configId) {
+  const connection = await getPool().getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const device = await getOwnedDeviceForConfig(deviceId, userId, connection, true);
+    requireDeviceAvailable(device);
+
+    const configGen = await getConfigGenerationByConfigId(device.id, configId, connection, true);
+    if (!configGen) {
+      throw notFoundError('Config generation not found.', 'CONFIG_NOT_FOUND');
+    }
+
+    if (configGen.status !== 'generated') {
+      throw badRequestError(`Cannot confirm config in '${configGen.status}' status. Only 'generated' status can be confirmed.`, 'INVALID_CONFIG_STATUS');
+    }
+
+    await connection.execute(
+      `UPDATE device_config_generations SET status = 'uploaded' WHERE id = ?`,
+      [configGen.id]
+    );
+
+    await writeAuditLog({
+      actorUserId: userId,
+      action: 'user.device.config_file.confirm',
+      targetType: 'device',
+      targetId: device.device_id,
+      payload: { deviceId: device.device_id, configId, configVersion: configGen.config_version },
+      clientIp: null,
+      userAgent: null,
+      connection
+    });
+
+    await connection.commit();
+
+    return {
+      configId,
+      configVersion: Number(configGen.config_version),
+      status: 'uploaded',
+      confirmedAt: toIso(new Date())
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function appliedConfigFile(deviceId, userId, configId) {
+  const connection = await getPool().getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const device = await getOwnedDeviceForConfig(deviceId, userId, connection, true);
+    requireDeviceAvailable(device);
+
+    const configGen = await getConfigGenerationByConfigId(device.id, configId, connection, true);
+    if (!configGen) {
+      throw notFoundError('Config generation not found.', 'CONFIG_NOT_FOUND');
+    }
+
+    if (configGen.status !== 'uploaded') {
+      throw badRequestError(`Cannot apply config in '${configGen.status}' status. Only 'uploaded' status can be applied.`, 'INVALID_CONFIG_STATUS');
+    }
+
+    // Set any existing active config to superseded
+    await connection.execute(
+      `UPDATE device_config_generations
+       SET status = 'superseded'
+       WHERE device_id = ? AND status = 'active'`,
+      [device.id]
+    );
+
+    // Update this config to active with applied_at
+    await connection.execute(
+      `UPDATE device_config_generations
+       SET status = 'active', applied_at = NOW()
+       WHERE id = ?`,
+      [configGen.id]
+    );
+
+    // Update device active config
+    await connection.execute(
+      `UPDATE devices
+       SET active_config_id = ?, active_config_version = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [configId, configGen.config_version, device.id]
+    );
+
+    await writeAuditLog({
+      actorUserId: userId,
+      action: 'user.device.config_file.applied',
+      targetType: 'device',
+      targetId: device.device_id,
+      payload: { deviceId: device.device_id, configId, configVersion: configGen.config_version },
+      clientIp: null,
+      userAgent: null,
+      connection
+    });
+
+    await connection.commit();
+
+    return {
+      configId,
+      configVersion: Number(configGen.config_version),
+      status: 'active',
+      appliedAt: toIso(new Date())
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function revokeConfigGeneration(configId, adminUserId, reason) {
+  const connection = await getPool().getConnection();
+
+  try {
+    await connection.beginTransaction();
+
+    const [rows] = await connection.execute(
+      `SELECT dcg.id, dcg.device_id, dcg.config_id, dcg.config_version, dcg.status, d.device_id as device_identifier
+       FROM device_config_generations dcg
+       INNER JOIN devices d ON d.id = dcg.device_id
+       WHERE dcg.config_id = ?
+       LIMIT 1 FOR UPDATE`,
+      [configId]
+    );
+    const configGen = rows[0];
+
+    if (!configGen) {
+      throw notFoundError('Config generation not found.', 'CONFIG_NOT_FOUND');
+    }
+
+    if (configGen.status === 'revoked') {
+      throw badRequestError('Config is already revoked.', 'ALREADY_REVOKED');
+    }
+
+    if (configGen.status === 'superseded' || configGen.status === 'expired') {
+      throw badRequestError(`Cannot revoke config in '${configGen.status}' status.`, 'INVALID_CONFIG_STATUS');
+    }
+
+    await connection.execute(
+      `UPDATE device_config_generations
+       SET status = 'revoked', revoked_at = NOW(), revoked_reason = ?
+       WHERE id = ?`,
+      [reason || null, configGen.id]
+    );
+
+    await writeAuditLog({
+      actorUserId: adminUserId,
+      action: 'admin.config_generation.revoke',
+      targetType: 'device',
+      targetId: configGen.device_identifier,
+      payload: { configId, configVersion: configGen.config_version, reason },
+      clientIp: null,
+      userAgent: null,
+      connection
+    });
+
+    await connection.commit();
+
+    return {
+      configId,
+      configVersion: Number(configGen.config_version),
+      status: 'revoked',
+      revokedAt: toIso(new Date()),
+      revokedReason: reason
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 export const __phase7Internals = {
