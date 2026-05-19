@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { deviceIdParamSchema, deviceStatusValues, machineCodeSchema, pairingCodeSchema } from './common.validator.js';
+import { deviceIdParamSchema, deviceIdWithConfigIdSchema, deviceStatusValues, machineCodeSchema, pairingCodeSchema } from './common.validator.js';
 import { paginationQuerySchema } from './pagination.validator.js';
 
 export const linkDeviceSchema = z.object({
@@ -8,6 +8,8 @@ export const linkDeviceSchema = z.object({
 }).strict();
 
 export const deviceParamsSchema = deviceIdParamSchema;
+
+export { deviceIdWithConfigIdSchema } from './common.validator.js';
 
 export const updateUserDeviceSchema = z.object({
   displayName: z

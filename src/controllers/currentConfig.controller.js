@@ -6,6 +6,7 @@ import {
   saveDeviceCurrentConfig,
   saveDeviceSchedule
 } from '../services/currentConfig.service.js';
+import { notFoundError, conflictError } from '../utils/errors.js';
 
 function requestContext(req) {
   return {
@@ -33,11 +34,38 @@ export async function putCurrentConfig(req, res) {
 
 export async function getSchedule(req, res) {
   const schedule = await getDeviceSchedule(req.params.deviceId, req.user.id);
+  // Add ETag header
+  const version = schedule.version || 1;
+  res.set('ETag', `"${version}"`);
   return sendSuccess(res, schedule);
 }
 
 export async function putSchedule(req, res) {
-  const schedule = await saveDeviceSchedule(req.params.deviceId, req.user.id, req.body, requestContext(req));
+  const deviceId = req.params.deviceId;
+  const userId = req.user.id;
+
+  // Get current schedule for version check
+  const currentSchedule = await getDeviceSchedule(deviceId, userId);
+  const currentVersion = currentSchedule.version || 1;
+
+  // Validate If-Match header if present
+  const ifMatch = req.headers['if-match'];
+  if (ifMatch) {
+    // Parse version from If-Match header (format: "123")
+    const matchVersion = parseInt(ifMatch.replace(/"/g, ''), 10);
+    if (!isNaN(matchVersion) && matchVersion !== currentVersion) {
+      throw conflictError('Resource was modified.', 'VERSION_CONFLICT', {
+        currentVersion,
+        yourVersion: matchVersion
+      });
+    }
+  }
+
+  // Save with the current version (service will increment it)
+  const schedule = await saveDeviceSchedule(deviceId, userId, req.body, requestContext(req));
+
+  // Set ETag header for the new version
+  res.set('ETag', `"${schedule.version}"`);
   return sendSuccess(res, schedule);
 }
 

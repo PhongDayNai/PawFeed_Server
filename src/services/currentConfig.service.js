@@ -53,6 +53,7 @@ function scheduleJsonFromInput(schedule) {
 
 function toScheduleResponse(scheduleRow, itemRows = [], deviceId = undefined, defaults = {}) {
   const enabled = scheduleRow ? toBoolean(scheduleRow.enabled) : false;
+  const version = scheduleRow ? Number(scheduleRow.version || 1) : 1;
   const timezone = scheduleRow?.timezone || defaults.defaultTimezone || FALLBACK_TIMEZONE;
   const timezoneOffsetSec = Number(scheduleRow?.timezone_offset_sec ?? defaults.defaultTimezoneOffsetSec ?? FALLBACK_TIMEZONE_OFFSET_SEC);
   const entries = itemRows.map((row) => ({
@@ -68,6 +69,7 @@ function toScheduleResponse(scheduleRow, itemRows = [], deviceId = undefined, de
   return {
     ...(deviceId ? { deviceId } : {}),
     enabled,
+    version,
     timezone,
     timezoneOffsetSec,
     entries,
@@ -134,7 +136,7 @@ async function getCurrentConfigRow(devicePk, executor = getPool(), lock = false)
 
 async function getScheduleRows(devicePk, executor = getPool(), lock = false) {
   const [scheduleRows] = await executor.execute(
-    `SELECT id, device_id, enabled, timezone, timezone_offset_sec, created_at, updated_at
+    `SELECT id, device_id, enabled, version, timezone, timezone_offset_sec, created_at, updated_at
      FROM feeding_schedules
      WHERE device_id = ?
      LIMIT 1${lock ? ' FOR UPDATE' : ''}`,
@@ -298,22 +300,32 @@ export async function saveDeviceSchedule(deviceId, userId, input, context) {
     const normalizedItems = normalizeScheduleItems(input.entries || []);
     const scheduleJson = scheduleJsonFromInput({ enabled, entries: normalizedItems });
 
+    // Get current schedule to increment version
+    const [existingSchedule] = await connection.execute(
+      `SELECT version FROM feeding_schedules WHERE device_id = ? LIMIT 1`,
+      [device.id]
+    );
+    const currentVersion = existingSchedule[0]?.version || 0;
+    const newVersion = currentVersion + 1;
+
     const [scheduleResult] = await connection.execute(
       `INSERT INTO feeding_schedules (
         device_id,
         enabled,
+        version,
         timezone,
         timezone_offset_sec,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, NOW(), NOW())
+      ) VALUES (?, ?, ?, ?, ?, NOW(), NOW())
       ON DUPLICATE KEY UPDATE
         id = LAST_INSERT_ID(id),
         enabled = VALUES(enabled),
+        version = VALUES(version),
         timezone = VALUES(timezone),
         timezone_offset_sec = VALUES(timezone_offset_sec),
         updated_at = NOW()`,
-      [device.id, enabled, timezone, timezoneOffsetSec]
+      [device.id, enabled, newVersion, timezone, timezoneOffsetSec]
     );
 
     const scheduleId = scheduleResult.insertId;
@@ -373,7 +385,8 @@ export async function saveDeviceSchedule(deviceId, userId, input, context) {
         enabled,
         timezone,
         timezoneOffsetSec,
-        itemCount: normalizedItems.length
+        itemCount: normalizedItems.length,
+        version: newVersion
       },
       clientIp: context.clientIp,
       userAgent: context.userAgent,
