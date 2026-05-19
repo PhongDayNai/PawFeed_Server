@@ -568,6 +568,11 @@ export async function revokeAdminConfigGeneration(configId, adminUserId, context
       [context.reason || null, configId]
     );
 
+    // Update row in memory with new values so toConfigGeneration sees them
+    row.status = 'revoked';
+    row.revoked_at = new Date();
+    row.revoked_reason = context.reason || null;
+
     await writeAuditLog({
       actorUserId: adminUserId,
       action: 'admin.config_generation.revoke',
