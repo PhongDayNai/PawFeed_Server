@@ -143,6 +143,9 @@ function configGenerationSelectSql() {
       g.client_ip,
       g.user_agent,
       g.status,
+      g.revoked_at,
+      g.revoked_reason,
+      g.applied_at,
       g.created_at,
       d.device_id,
       d.machine_code,
@@ -175,6 +178,9 @@ function toConfigGeneration(row, options = {}) {
     scheduleEnabled: toBoolean(row.schedule_enabled),
     scheduleItemCount: Number(row.schedule_item_count || 0),
     status: row.status,
+    revokedAt: toIso(row.revoked_at),
+    revokedReason: row.revoked_reason || null,
+    appliedAt: toIso(row.applied_at),
     createdAt: toIso(row.created_at),
     ...(includeAdminFields
       ? {
@@ -557,9 +563,9 @@ export async function revokeAdminConfigGeneration(configId, adminUserId, context
 
     await connection.execute(
       `UPDATE device_config_generations
-       SET status = 'revoked'
+       SET status = 'revoked', revoked_at = NOW(), revoked_reason = ?
        WHERE config_id = ?`,
-      [configId]
+      [context.reason || null, configId]
     );
 
     await writeAuditLog({

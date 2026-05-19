@@ -55,6 +55,8 @@ export async function getAdminConfigGenerationDetail(req, res) {
 }
 
 export async function revokeConfigGeneration(req, res) {
-  const configGeneration = await revokeAdminConfigGeneration(req.params.configId, req.user.id, requestContext(req));
+  const context = requestContext(req);
+  context.reason = req.body?.reason;
+  const configGeneration = await revokeAdminConfigGeneration(req.params.configId, req.user.id, context);
   return sendSuccess(res, { configGeneration });
 }
