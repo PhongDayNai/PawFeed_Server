@@ -28,6 +28,19 @@ export const deviceIdParamSchema = z.object({
     .max(100, 'Device ID must be at most 100 characters.')
 });
 
+export const deviceIdWithConfigIdSchema = z.object({
+  deviceId: z
+    .string()
+    .trim()
+    .min(1, 'Device ID is required.')
+    .max(100, 'Device ID must be at most 100 characters.'),
+  configId: z
+    .string()
+    .trim()
+    .min(1, 'Config ID is required.')
+    .max(100, 'Config ID must be at most 100 characters.')
+});
+
 export const paginationQuerySchema = z.object({
   page: z.coerce
     .number({ invalid_type_error: 'Page must be a number.' })

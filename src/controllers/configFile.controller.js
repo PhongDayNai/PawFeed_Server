@@ -2,7 +2,9 @@ import { sendSuccess } from '../utils/response.js';
 import {
   generateConfigFile,
   listConfigGenerations,
-  regenerateConfigFile
+  regenerateConfigFile,
+  confirmConfigFile as confirmConfigFileService,
+  appliedConfigFile as appliedConfigFileService
 } from '../services/configFile.service.js';
 
 function requestContext(req) {
@@ -62,4 +64,14 @@ export async function regenerateConfigFileController(req, res) {
 export async function getConfigGenerations(req, res) {
   const result = await listConfigGenerations(req.params.deviceId, req.user.id, req.query);
   return sendSuccess(res, { configGenerations: result.items }, 200, result.pagination);
+}
+
+export async function confirmConfigFile(req, res) {
+  const result = await confirmConfigFileService(req.params.deviceId, req.user.id, req.params.configId);
+  return sendSuccess(res, result);
+}
+
+export async function appliedConfigFile(req, res) {
+  const result = await appliedConfigFileService(req.params.deviceId, req.user.id, req.params.configId);
+  return sendSuccess(res, result);
 }

@@ -25,10 +25,13 @@ import {
 } from '../controllers/currentConfig.controller.js';
 import {
   createConfigFile,
-  regenerateConfigFileController
+  regenerateConfigFileController,
+  confirmConfigFile,
+  appliedConfigFile
 } from '../controllers/configFile.controller.js';
 import {
   deviceParamsSchema,
+  deviceIdWithConfigIdSchema,
   linkDeviceSchema,
   listUserDevicesQuerySchema,
   updateUserDeviceSchema
@@ -100,6 +103,16 @@ router.post(
   validateParams(deviceParamsSchema),
   validateQuery(configFileQuerySchema),
   asyncHandler(regenerateConfigFileController)
+);
+router.post(
+  '/:deviceId/config-file/:configId/confirm',
+  validateParams(deviceIdWithConfigIdSchema),
+  asyncHandler(confirmConfigFile)
+);
+router.post(
+  '/:deviceId/config-file/:configId/applied',
+  validateParams(deviceIdWithConfigIdSchema),
+  asyncHandler(appliedConfigFile)
 );
 
 router.post(
