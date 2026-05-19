@@ -18,6 +18,7 @@ import {
   findUserById,
   updateUserPassword
 } from './user.service.js';
+import { recordFailedLoginAttempt, clearFailedLoginAttempts } from '../middleware/bruteForceProtection.js';
 
 const allowedRoles = new Set(['user', 'admin', 'technician']);
 
@@ -70,15 +71,17 @@ export async function registerUser({ fullName = null, email, password }) {
   return createAuthPayload(user);
 }
 
-export async function loginUser({ email, password }) {
+export async function loginUser({ email, password }, req) {
   const user = await findUserByEmail(email);
   assertUserCanLogin(user);
 
   const passwordOk = await verifyPassword(password, user.password_hash);
   if (!passwordOk) {
+    if (req) recordFailedLoginAttempt(req);
     throw unauthorizedError('Email or password is incorrect.', 'INVALID_CREDENTIALS');
   }
 
+  if (req) clearFailedLoginAttempts(req);
   return createAuthPayload(user);
 }
 
