@@ -12,7 +12,7 @@ export async function register(req, res) {
 }
 
 export async function login(req, res) {
-  const result = await loginUser(req.body);
+  const result = await loginUser(req.body, req);
   return sendSuccess(res, result);
 }
 

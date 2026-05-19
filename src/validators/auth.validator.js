@@ -18,7 +18,11 @@ const emailSchema = z
 const passwordSchema = z
   .string()
   .min(8, 'Password must be at least 8 characters.')
-  .max(255, 'Password is too long.');
+  .max(255, 'Password is too long.')
+  .regex(
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?])/,
+    'Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character.'
+  );
 
 export const registerSchema = z.object({
   fullName: fullNameSchema,
