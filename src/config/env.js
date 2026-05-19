@@ -48,7 +48,12 @@ export const env = {
     configGenerationRateLimitWindowMs: parseInteger(process.env.CONFIG_GENERATION_RATE_LIMIT_WINDOW_MS, 10 * 60_000),
     configGenerationRateLimitMax: parseInteger(process.env.CONFIG_GENERATION_RATE_LIMIT_MAX, 15),
     adminSensitiveRateLimitWindowMs: parseInteger(process.env.ADMIN_SENSITIVE_RATE_LIMIT_WINDOW_MS, 10 * 60_000),
-    adminSensitiveRateLimitMax: parseInteger(process.env.ADMIN_SENSITIVE_RATE_LIMIT_MAX, 30)
+    adminSensitiveRateLimitMax: parseInteger(process.env.ADMIN_SENSITIVE_RATE_LIMIT_MAX, 30),
+    // Brute force protection
+    maxLoginAttempts: parseInteger(process.env.MAX_LOGIN_ATTEMPTS, 5),
+    lockoutDurationMinutes: parseInteger(process.env.LOCKOUT_DURATION_MINUTES, 15),
+    captchaTriggerAfterAttempts: parseInteger(process.env.CAPTCHA_TRIGGER_AFTER_ATTEMPTS, 3),
+    lockoutWindowMs: parseInteger(process.env.LOCKOUT_WINDOW_MS, 15 * 60 * 1000)
   },
 
   db: {
