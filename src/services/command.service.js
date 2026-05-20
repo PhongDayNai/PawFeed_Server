@@ -1,17 +1,19 @@
 import { customAlphabet } from 'nanoid';
 import { getPool } from '../config/db.js';
 import { publishFeedOnceCommand } from '../mqtt/mqttPublisher.js';
+import { mqttClientService } from '../mqtt/mqttClient.js';
 import { AppError, badRequestError, notFoundError } from '../utils/errors.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { normalizeDeviceId } from '../utils/normalize.js';
 import { buildPaginationMeta, paginationFromQuery } from '../utils/pagination.js';
 import { assertOwnedDevice } from './device.service.js';
 import { writeAuditLog } from './audit.service.js';
+import { enqueueCommand, flushQueue } from './offlineQueue.service.js';
 
 const randomId = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 8);
 const BLOCKED_DEVICE_STATUSES = new Set(['disabled', 'revoked']);
-const VALID_OPEN_DURATION_MIN_MS = 300;
-const VALID_OPEN_DURATION_MAX_MS = 10000;
+const VALID_OPEN_DURATION_MIN_MS = 100;
+const VALID_OPEN_DURATION_MAX_MS = 600000;
 
 function toIso(value) {
   return value ? new Date(value).toISOString() : null;
@@ -131,6 +133,7 @@ export async function createFeedNowCommand(deviceId, userId, input, context = {}
   let commandPk = null;
   let commandRequestId = null;
   let normalizedDeviceId = null;
+  let isOnline = false;
 
   try {
     await connection.beginTransaction();
@@ -175,12 +178,40 @@ export async function createFeedNowCommand(deviceId, userId, input, context = {}
       connection
     });
 
+    // Check device online status before commit
+    const [statusRows] = await connection.execute(
+      `SELECT online FROM device_latest_status WHERE device_id = ?`,
+      [device.id]
+    );
+    isOnline = statusRows.length > 0 && statusRows[0].online;
+
     await connection.commit();
   } catch (error) {
     await connection.rollback();
     throw error;
   } finally {
     connection.release();
+  }
+
+  if (!isOnline) {
+    // Device offline - queue command
+    const device = await assertOwnedDevice(deviceId, userId);
+    await enqueueCommand(device.id, commandRequestId, 'feed_once', { openDurationMs });
+
+    const [rows] = await getPool().execute(
+      `${commandSelectSql()}
+       WHERE c.id = ?
+       LIMIT 1`,
+      [commandPk]
+    );
+    const command = toCommand(rows[0]);
+
+    return {
+      ok: true,
+      requestId: command.requestId,
+      status: 'queued',
+      command
+    };
   }
 
   try {

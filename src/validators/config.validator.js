@@ -45,8 +45,8 @@ export const optionalAddressNoteSchema = z
 export const openDurationMsSchema = z
   .number({ invalid_type_error: 'Open duration must be a number.' })
   .int('Open duration must be an integer.')
-  .min(300, 'Open duration must be at least 300 ms.')
-  .max(10000, 'Open duration must be at most 10000 ms.')
+  .min(100, 'Open duration must be at least 100 ms.')
+  .max(600000, 'Open duration must be at most 600000 ms.')
   .optional();
 
 export const enableNotificationsSchema = z

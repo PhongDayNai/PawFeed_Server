@@ -9,7 +9,8 @@ export const COMMAND_STATUS_VALUES = [
   'rejected',
   'completed',
   'failed',
-  'timeout'
+  'timeout',
+  'queued'
 ];
 
 export const COMMAND_ACTION_VALUES = ['feed_once'];
@@ -19,8 +20,8 @@ export const feedNowBodySchema = z
     openDurationMs: z.coerce
       .number({ invalid_type_error: 'Open duration must be a number.' })
       .int('Open duration must be an integer.')
-      .min(300, 'Open duration must be at least 300 ms.')
-      .max(10000, 'Open duration must be at most 10000 ms.')
+      .min(100, 'Open duration must be at least 100 ms.')
+      .max(600000, 'Open duration must be at most 600000 ms.')
   })
   .strict();
 
@@ -38,6 +39,14 @@ export const listCommandsQuerySchema = paginationQuerySchema
     action: z.enum(COMMAND_ACTION_VALUES).optional()
   })
   .strict();
+
+export const commandQueueParamsSchema = deviceIdParamSchema.extend({
+  requestId: z
+    .string()
+    .trim()
+    .min(1, 'Request ID is required.')
+    .max(100, 'Request ID must be at most 100 characters.')
+});
 
 export const listAdminCommandsQuerySchema = paginationQuerySchema
   .extend({
