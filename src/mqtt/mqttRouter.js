@@ -46,13 +46,16 @@ function maskSensitiveFields(value) {
 
 export function parseFeederTopic(topic) {
   const match = DEVICE_TOPIC_PATTERN.exec(topic);
-  if (!match) return null;
+  if (match) {
+    return {
+      topic,
+      deviceId: match[1],
+      type: match[2],
+      version: 1
+    };
+  }
 
-  return {
-    topic,
-    deviceId: match[1],
-    type: match[2]
-  };
+  return null;
 }
 
 export class MqttRouter {

@@ -12,6 +12,22 @@ export const DEFAULT_MQTT_SUBSCRIPTIONS = Object.freeze([
   'feeder/+/ack'
 ]);
 
+// QoS levels per topic type as per Phase 4 spec
+export const MQTT_QOS = Object.freeze({
+  COMMANDS: 1,  // At least once - command must be received
+  STATUS: 0,    // Fire-and-forget, retained message
+  EVENTS: 0,    // Fire-and-forget
+  ACK: 1        // At least once - ACK must be received
+});
+
+// Topic builders (feeder/{deviceId}/ format - what device firmware uses)
+export const TOPICS = Object.freeze({
+  COMMANDS: (deviceId) => `feeder/${deviceId}/cmd`,
+  STATUS: (deviceId) => `feeder/${deviceId}/status`,
+  EVENTS: (deviceId) => `feeder/${deviceId}/event`,
+  ACK: (deviceId) => `feeder/${deviceId}/ack`
+});
+
 function hasText(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
 }
@@ -51,6 +67,10 @@ export function maskMqttOptions(options) {
 
 export function buildDeviceCommandTopic(deviceId) {
   return `feeder/${deviceId}/cmd`;
+}
+
+export function buildDeviceStatusTopic(deviceId) {
+  return `feeder/${deviceId}/status`;
 }
 
 export class MqttClientService {
@@ -171,7 +191,7 @@ export class MqttClientService {
     const topic = buildDeviceCommandTopic(deviceId);
     const message = typeof payload === 'string' ? payload : JSON.stringify(payload);
     const publishOptions = {
-      qos: options.qos ?? this.config.publishQos,
+      qos: options.qos ?? MQTT_QOS.COMMANDS,
       retain: options.retain ?? false
     };
 
@@ -183,6 +203,35 @@ export class MqttClientService {
     });
 
     this.logger.info?.(`[mqtt] published command to ${topic}`);
+    return {
+      ok: true,
+      topic,
+      payloadSize: Buffer.byteLength(message, 'utf8'),
+      qos: publishOptions.qos,
+      retain: publishOptions.retain
+    };
+  }
+
+  async publishStatus(deviceId, payload, options = {}) {
+    if (!this.enabled || !this.client || !this.connected) {
+      return { ok: false, reason: 'not_connected' };
+    }
+
+    const topic = buildDeviceStatusTopic(deviceId);
+    const message = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    const publishOptions = {
+      qos: options.qos ?? MQTT_QOS.STATUS,
+      retain: options.retain ?? true  // Status messages are retained by default
+    };
+
+    await new Promise((resolve, reject) => {
+      this.client.publish(topic, message, publishOptions, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+
+    this.logger.info?.(`[mqtt] published status to ${topic} (retained: ${publishOptions.retain})`);
     return {
       ok: true,
       topic,
