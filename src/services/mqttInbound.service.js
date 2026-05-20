@@ -1,6 +1,8 @@
 import { getPool } from '../config/db.js';
 import { badRequestError, notFoundError } from '../utils/errors.js';
 import { normalizeDeviceId } from '../utils/normalize.js';
+import { flushQueue } from './offlineQueue.service.js';
+import { publishFeedOnceCommand } from '../mqtt/mqttPublisher.js';
 
 const BLOCKED_DEVICE_STATUSES = new Set(['disabled', 'revoked']);
 const FEEDING_HISTORY_SOURCES = new Set(['remote', 'schedule', 'manual', 'test']);
@@ -380,7 +382,28 @@ export async function handleOnlineMessage({ topicDeviceId, payload = {}, executo
   await patchDeviceActiveConfig(device.id, activeConfigId, activeConfigVersion, executor);
   await updateDeviceStatusFromOnline(device.id, online, executor);
 
-  return { ok: true, type: 'online', deviceId, online, activeConfigId, activeConfigVersion };
+  // If device came online, flush the offline command queue (FIFO)
+  let flushedCommands = [];
+  if (online) {
+    console.log('[DEBUG] Device online, flushing queue for devicePk:', device.id);
+    flushedCommands = await flushQueue(device.id, executor);
+    console.log('[DEBUG] flushedCommands:', flushedCommands);
+    for (const cmd of flushedCommands) {
+      try {
+        await publishFeedOnceCommand(deviceId, {
+          requestId: cmd.requestId,
+          openDurationMs: cmd.payload?.openDurationMs || 500
+        });
+      } catch (err) {
+        console.error(`[offlineQueue] failed to flush command ${cmd.requestId}:`, err.message);
+      }
+    }
+    if (flushedCommands.length > 0) {
+      console.log(`[offlineQueue] flushed ${flushedCommands.length} commands for device ${deviceId}`);
+    }
+  }
+
+  return { ok: true, type: 'online', deviceId, online, activeConfigId, activeConfigVersion, flushedCommands };
 }
 
 export async function handleStateMessage({ topicDeviceId, payload = {}, executor = getPool() }) {

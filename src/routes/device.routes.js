@@ -46,6 +46,10 @@ import {
   listCommands
 } from '../controllers/command.controller.js';
 import {
+  listCommandQueue,
+  removeFromCommandQueue
+} from '../controllers/commandQueue.controller.js';
+import {
   getUserConfigGenerations,
   getUserDeviceEvents,
   getUserFeedingHistory
@@ -129,9 +133,19 @@ router.get(
   asyncHandler(listCommands)
 );
 router.get(
+  '/:deviceId/command-queue',
+  validateParams(deviceParamsSchema),
+  asyncHandler(listCommandQueue)
+);
+router.get(
   '/:deviceId/commands/:requestId',
   validateParams(commandParamsSchema),
   asyncHandler(getCommandStatus)
+);
+router.delete(
+  '/:deviceId/command-queue/:requestId',
+  validateParams(commandParamsSchema),
+  asyncHandler(removeFromCommandQueue)
 );
 
 router.get(
