@@ -24,11 +24,11 @@ function isLocked(key) {
 }
 
 export function checkBruteForce(req, _res, next) {
-  const key = getLoginKey(req.ip, req.body?.email);
-
-  if (key.endsWith(':undefined') || key.endsWith(':null')) {
+  const email = req.body?.email;
+  if (!email || typeof email !== 'string') {
     return next();
   }
+  const key = getLoginKey(req.ip, email);
 
   if (isLocked(key)) {
     return next(forbiddenError(
