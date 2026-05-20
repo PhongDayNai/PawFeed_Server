@@ -17,7 +17,8 @@ function requestContext(req) {
 
 export async function feedNow(req, res) {
   const result = await createFeedNowCommand(req.params.deviceId, req.user.id, req.body, requestContext(req));
-  return sendCreated(res, result);
+  const statusCode = result.status === 'queued' ? 202 : 201;
+  return sendCreated(res, result, statusCode);
 }
 
 export async function getCommandStatus(req, res) {
