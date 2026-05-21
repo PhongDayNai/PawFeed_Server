@@ -4,8 +4,11 @@ import { mqttClientService } from './mqtt/mqttClient.js';
 import { workerManager } from './workers/index.js';
 import { assertProductionSecurity } from './middleware/security.js';
 import { safeErrorLog } from './utils/redact.js';
+import { sseService } from './services/sse.service.js';
 
 assertProductionSecurity();
+
+const HEARTBEAT_INTERVAL_MS = 60 * 1000; // 60 seconds
 
 const server = app.listen(env.port, env.host, () => {
   console.log(`[server] ${env.appName} v${env.appVersion} listening on http://${env.host}:${env.port}`);
@@ -14,6 +17,11 @@ const server = app.listen(env.port, env.host, () => {
   workerManager.start();
 });
 
+// SSE heartbeat - keep connections alive every 60s
+const heartbeatTimer = setInterval(() => {
+  sseService.emitHeartbeat();
+}, HEARTBEAT_INTERVAL_MS);
+
 let isShuttingDown = false;
 
 async function shutdown(signal) {
@@ -21,6 +29,9 @@ async function shutdown(signal) {
   isShuttingDown = true;
 
   console.log(`[server] received ${signal}. Shutting down...`);
+
+  // Stop SSE heartbeat
+  clearInterval(heartbeatTimer);
 
   try {
     await workerManager.stop();
