@@ -1,10 +1,11 @@
-import { sendCreated, sendSuccess } from '../utils/response.js';
+import { sendSuccess } from '../utils/response.js';
 import {
   createFeedNowCommand,
   getUserCommandStatus,
   listAdminCommands,
   listUserCommands
 } from '../services/command.service.js';
+import { idempotencyService } from '../services/idempotency.service.js';
 
 function requestContext(req) {
   return {
@@ -17,8 +18,15 @@ function requestContext(req) {
 
 export async function feedNow(req, res) {
   const result = await createFeedNowCommand(req.params.deviceId, req.user.id, req.body, requestContext(req));
-  const statusCode = result.status === 'queued' ? 202 : 201;
-  return sendCreated(res, result, statusCode);
+  // Always 202 Accepted per spec (api-status.md)
+  const statusCode = 202;
+
+  // Store result for idempotency if key was provided
+  if (req.idempotencyKey) {
+    await idempotencyService.store(req.idempotencyKey, result, statusCode);
+  }
+
+  return res.status(statusCode).json({ ok: true, ...result });
 }
 
 export async function getCommandStatus(req, res) {

@@ -7,6 +7,7 @@ import {
   feedNowRateLimiter,
   linkDeviceRateLimiter
 } from '../middleware/rateLimits.js';
+import { idempotencyMiddleware } from '../middleware/idempotency.js';
 import {
   getDevice,
   getDeviceStatus,
@@ -124,6 +125,7 @@ router.post(
   feedNowRateLimiter,
   validateParams(deviceParamsSchema),
   validateBody(feedNowBodySchema),
+  idempotencyMiddleware,
   asyncHandler(feedNow)
 );
 router.get(
