@@ -3,6 +3,7 @@ import { badRequestError, notFoundError } from '../utils/errors.js';
 import { normalizeDeviceId } from '../utils/normalize.js';
 import { flushQueue } from './offlineQueue.service.js';
 import { publishFeedOnceCommand } from '../mqtt/mqttPublisher.js';
+import { sseService } from './sse.service.js';
 
 const BLOCKED_DEVICE_STATUSES = new Set(['disabled', 'revoked']);
 const FEEDING_HISTORY_SOURCES = new Set(['remote', 'schedule', 'manual', 'test']);
@@ -66,6 +67,7 @@ async function findDeviceByDeviceId(deviceId, executor, lock = false) {
       id,
       device_id,
       status,
+      owner_user_id,
       active_config_id,
       active_config_version
      FROM devices
@@ -403,6 +405,12 @@ export async function handleOnlineMessage({ topicDeviceId, payload = {}, executo
     }
   }
 
+  // Emit SSE event to device owner
+  const ownerUserId = device.owner_user_id;
+  if (ownerUserId) {
+    sseService.emitDeviceStatusUpdated(ownerUserId, deviceId, online, seenAt.toISOString());
+  }
+
   return { ok: true, type: 'online', deviceId, online, activeConfigId, activeConfigVersion, flushedCommands };
 }
 
@@ -569,6 +577,44 @@ export async function handleEventMessage({ topicDeviceId, payload = {}, executor
     }
 
     if (connection) await connection.commit();
+
+    // Emit SSE events to device owner (fire-and-forget, after commit)
+    const ownerUserId = device.owner_user_id;
+    if (ownerUserId) {
+      if (sideEffect.action === 'feed_finished' && sideEffect.feedingHistory?.inserted) {
+        sseService.emitFeedingCompleted(
+          ownerUserId,
+          deviceId,
+          sideEffect.feedingHistory.requestId,
+          sideEffect.feedingHistory.openDurationMs,
+          new Date().toISOString()
+        );
+        // Also emit command_updated with status: completed
+        if (sideEffect.feedingHistory.requestId) {
+          sseService.emitCommandUpdated(
+            ownerUserId,
+            sideEffect.feedingHistory.requestId,
+            deviceId,
+            'completed',
+            'feed_once'
+          );
+        }
+      } else if (sideEffect.action === 'config_applied') {
+        sseService.emitConfigApplied(
+          ownerUserId,
+          deviceId,
+          sideEffect.configId,
+          sideEffect.configVersion
+        );
+      } else if (eventRecord.eventType === 'error' || eventRecord.eventType === 'device_error') {
+        sseService.emitDeviceError(
+          ownerUserId,
+          deviceId,
+          toTextOrNull(payload.error) || 'unknown_error',
+          toTextOrNull(payload.details) || toTextOrNull(payload.message)
+        );
+      }
+    }
 
     return { ok: true, type: 'event', deviceId, event: eventRecord, sideEffect };
   } catch (error) {
