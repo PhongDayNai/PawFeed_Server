@@ -1,0 +1,3459 @@
+openapi: 3.1.0
+info:
+  title: Pet Feeder API
+  version: 1.0.0
+  description: Pet Feeder IoT Platform API
+
+servers:
+  - url: /v1
+    description: Current server (relative)
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          const: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+        totalItems:
+          type: integer
+        totalPages:
+          type: integer
+
+    LoginResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          const: true
+        user:
+          $ref: '#/components/schemas/User'
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        fullName:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [user, admin]
+        status:
+          type: string
+          enum: [active, inactive, disabled]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Device:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        machineCode:
+          type: string
+        displayName:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [not_configured, linked, config_generated, configured, online, offline, disabled, revoked, unlinked]
+        firmwareVersion:
+          type: string
+          nullable: true
+        ownerUserId:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DeviceStatus:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        online:
+          type: boolean
+        status:
+          type: string
+          enum: [not_configured, linked, config_generated, configured, online, offline, disabled, revoked, unlinked]
+        lastSeen:
+          type: string
+          format: date-time
+          nullable: true
+
+    MqttStatus:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        connected:
+          type: boolean
+        lastConnectedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastDisconnectedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CurrentConfig:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        version:
+          type: integer
+        wifiSsid:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        addressNote:
+          type: string
+          nullable: true
+        timezone:
+          type: string
+          default: Asia/Bangkok
+        timezoneOffsetSec:
+          type: integer
+          default: 25200
+        keepSetupApEnabled:
+          type: boolean
+          default: false
+        openDurationMs:
+          type: integer
+          minimum: 100
+          maximum: 600000
+          nullable: true
+        enableNotifications:
+          type: boolean
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+
+    ScheduleEntry:
+      type: object
+      required: [time, openDurationMs]
+      properties:
+        time:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+          description: HH:mm format (strict)
+        openDurationMs:
+          type: integer
+          minimum: 100
+          maximum: 600000
+        daysOfWeek:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+            maximum: 6
+          default: [0, 1, 2, 3, 4, 5, 6]
+
+    Schedule:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        version:
+          type: integer
+        enabled:
+          type: boolean
+          default: true
+        timezone:
+          type: string
+          nullable: true
+        timezoneOffsetSec:
+          type: integer
+          nullable: true
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleEntry'
+          maxItems: 8
+        updatedAt:
+          type: string
+          format: date-time
+
+    ScheduleApplyStatus:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        applied:
+          type: boolean
+        appliedAt:
+          type: string
+          format: date-time
+          nullable: true
+        pendingConfigId:
+          type: string
+          nullable: true
+
+    ConfigFileJsonResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          const: true
+        fileName:
+          type: string
+        configId:
+          type: string
+        configVersion:
+          type: integer
+        issuedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        content:
+          type: string
+
+    ConfigGeneration:
+      type: object
+      properties:
+        configId:
+          type: string
+        deviceId:
+          type: string
+        version:
+          type: integer
+        status:
+          type: string
+          enum: [generated, downloaded, applied, expired, revoked, failed]
+        checksum:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        appliedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedReason:
+          type: string
+          nullable: true
+
+    Command:
+      type: object
+      properties:
+        requestId:
+          type: string
+        deviceId:
+          type: string
+        action:
+          type: string
+          enum: [feed_once]
+        status:
+          type: string
+          enum: [pending, published, accepted, rejected, completed, failed, timeout, queued]
+        openDurationMs:
+          type: integer
+          minimum: 100
+          maximum: 600000
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CommandQueueItem:
+      type: object
+      properties:
+        requestId:
+          type: string
+        action:
+          type: string
+          enum: [feed_once]
+        openDurationMs:
+          type: integer
+          minimum: 100
+          maximum: 600000
+        queuedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [queued]
+        position:
+          type: integer
+          minimum: 1
+
+    DeviceEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        deviceId:
+          type: string
+        eventType:
+          type: string
+        source:
+          type: string
+          nullable: true
+        requestId:
+          type: string
+          nullable: true
+        configId:
+          type: string
+          nullable: true
+        payload:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    FeedingHistory:
+      type: object
+      properties:
+        id:
+          type: integer
+        deviceId:
+          type: string
+        requestId:
+          type: string
+          nullable: true
+        scheduleId:
+          type: string
+          nullable: true
+        source:
+          type: string
+          enum: [remote, schedule, manual, test]
+        status:
+          type: string
+          enum: [completed, failed, timeout, cancelled]
+        openDurationMs:
+          type: integer
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    MqttServer:
+      type: object
+      properties:
+        id:
+          type: integer
+        host:
+          type: string
+        port:
+          type: integer
+        protocol:
+          type: string
+          enum: [mqtt, mqtts, ws, wss]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    MqttCredential:
+      type: object
+      properties:
+        id:
+          type: integer
+        deviceId:
+          type: string
+        mqttUsername:
+          type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    SystemSettings:
+      type: object
+      properties:
+        accessTokenExpirySeconds:
+          type: integer
+        refreshTokenExpirySeconds:
+          type: integer
+        maxLoginAttempts:
+          type: integer
+        lockoutDurationSeconds:
+          type: integer
+        configTtlSeconds:
+          type: integer
+
+  parameters:
+    deviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 100
+    configId:
+      name: configId
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 100
+    requestId:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 100
+    userId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+    mqttServerId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+    page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    pageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Resource conflict or version mismatch
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+
+paths:
+  # ─── Health ─────────────────────────────────────────────────────────────────
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  status:
+                    type: string
+                    const: healthy
+
+  # ─── Auth ────────────────────────────────────────────────────────────────────
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                fullName:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                  nullable: true
+                email:
+                  type: string
+                  format: email
+                  maxLength: 255
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 255
+                  description: Must contain uppercase, lowercase, digit, and special character
+      responses:
+        '201':
+          description: User registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  user:
+                    $ref: '#/components/schemas/User'
+                  accessToken:
+                    type: string
+                  refreshToken:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 255
+                password:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account disabled or locked out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+                  minLength: 1
+      responses:
+        '200':
+          description: Tokens refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  accessToken:
+                    type: string
+                  refreshToken:
+                    type: string
+                  expiresIn:
+                    type: integer
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout (client should discard tokens)
+      responses:
+        '200':
+          description: Logout accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                newPassword:
+                  type: string
+                  minLength: 8
+                  maxLength: 255
+                confirmNewPassword:
+                  type: string
+                  minLength: 8
+                  maxLength: 255
+      responses:
+        '200':
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  user:
+                    $ref: '#/components/schemas/User'
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  # ─── Account ─────────────────────────────────────────────────────────────────
+
+  /account/profile:
+    patch:
+      tags: [Account]
+      summary: Update profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName]
+              properties:
+                fullName:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                  nullable: true
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ─── Dashboard ───────────────────────────────────────────────────────────────
+
+  /dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Get user dashboard summary
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  totalDevices:
+                    type: integer
+                  onlineDevices:
+                    type: integer
+                  offlineDevices:
+                    type: integer
+                  recentFeedingHistory:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FeedingHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ─── SSE ─────────────────────────────────────────────────────────────────────
+
+  /events/stream:
+    get:
+      tags: [Events]
+      summary: Subscribe to server-sent events
+      description: |
+        Opens a persistent SSE stream. Events are scoped to the authenticated user's devices.
+
+        **Event types:**
+        - `device_status_updated` — device came online or went offline
+        - `command_updated` — command status changed
+        - `feeding_completed` — feeding finished on device
+        - `config_applied` — config sync completed on device
+        - `device_error` — device reported an error
+        - `heartbeat` — keep-alive ping every 60 seconds
+
+        Reconnect with `Last-Event-ID` header to replay missed events.
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          schema:
+            type: string
+          description: Replay events after this ID on reconnect
+      responses:
+        '200':
+          description: SSE stream opened
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                const: text/event-stream
+            Cache-Control:
+              schema:
+                type: string
+                const: no-cache
+            X-Accel-Buffering:
+              schema:
+                type: string
+                const: 'no'
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  SSE format:
+                  ```
+                  id: evt_001
+                  event: device_status_updated
+                  data: {"deviceId":"device_001","online":true,"lastSeen":"2026-05-18T10:00:00.000Z"}
+
+                  id: evt_002
+                  event: heartbeat
+                  data: {"timestamp":"2026-05-18T10:00:00.000Z"}
+                  ```
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+
+  # ─── Devices ─────────────────────────────────────────────────────────────────
+
+  /devices:
+    get:
+      tags: [Devices]
+      summary: List user's devices
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [not_configured, linked, config_generated, configured, online, offline, disabled, revoked, unlinked]
+        - name: online
+          in: query
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: List of devices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  devices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Device'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /devices/link:
+    post:
+      tags: [Devices]
+      summary: Link a device to the current user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [machineCode, pairingCode]
+              properties:
+                machineCode:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                  description: Device machine code (uppercase alphanumeric with dashes/underscores)
+                pairingCode:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                  description: One-time pairing code
+      responses:
+        '201':
+          description: Device linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  device:
+                    $ref: '#/components/schemas/Device'
+        '200':
+          description: Device already linked to this user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  alreadyLinked:
+                    type: boolean
+                    const: true
+                  device:
+                    $ref: '#/components/schemas/Device'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Machine code not found or pairing code invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Device already linked to another user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /devices/{deviceId}:
+    get:
+      tags: [Devices]
+      summary: Get device details
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Device details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  device:
+                    $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Devices]
+      summary: Update device display name
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                  minLength: 1
+                  maxLength: 255
+                  nullable: true
+      responses:
+        '200':
+          description: Device updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  device:
+                    $ref: '#/components/schemas/Device'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/unlink:
+    post:
+      tags: [Devices]
+      summary: Unlink device from current user
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Device unlinked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/status:
+    get:
+      tags: [Devices]
+      summary: Get device online/offline status
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Device status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  deviceId:
+                    type: string
+                  online:
+                    type: boolean
+                  status:
+                    type: string
+                  lastSeen:
+                    type: string
+                    format: date-time
+                    nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/mqtt-status:
+    get:
+      tags: [Devices]
+      summary: Get device MQTT connection status
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: MQTT status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  deviceId:
+                    type: string
+                  connected:
+                    type: boolean
+                  lastConnectedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  lastDisconnectedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/current-config:
+    get:
+      tags: [Devices]
+      summary: Get device current config
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Current config
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Version string for concurrency control
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  deviceId:
+                    type: string
+                  version:
+                    type: integer
+                  wifiSsid:
+                    type: string
+                    nullable: true
+                  address:
+                    type: string
+                    nullable: true
+                  addressNote:
+                    type: string
+                    nullable: true
+                  timezone:
+                    type: string
+                  timezoneOffsetSec:
+                    type: integer
+                  keepSetupApEnabled:
+                    type: boolean
+                  openDurationMs:
+                    type: integer
+                    nullable: true
+                  enableNotifications:
+                    type: boolean
+                    nullable: true
+                  updatedAt:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Devices]
+      summary: Update device current config
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - name: If-Match
+          in: header
+          schema:
+            type: string
+          description: ETag version for optimistic concurrency control
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                wifiSsid:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                wifiPassword:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                address:
+                  type: string
+                  maxLength: 1000
+                  nullable: true
+                addressNote:
+                  type: string
+                  maxLength: 1000
+                  nullable: true
+                timezone:
+                  type: string
+                  maxLength: 100
+                  default: Asia/Bangkok
+                timezoneOffsetSec:
+                  type: integer
+                  minimum: -43200
+                  maximum: 50400
+                  default: 25200
+                keepSetupApEnabled:
+                  type: boolean
+                  default: false
+                openDurationMs:
+                  type: integer
+                  minimum: 100
+                  maximum: 600000
+                enableNotifications:
+                  type: boolean
+      responses:
+        '200':
+          description: Config updated
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  deviceId:
+                    type: string
+                  version:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /devices/{deviceId}/schedule:
+    get:
+      tags: [Devices]
+      summary: Get device feeding schedule
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Schedule
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  deviceId:
+                    type: string
+                  version:
+                    type: integer
+                  enabled:
+                    type: boolean
+                  timezone:
+                    type: string
+                    nullable: true
+                  timezoneOffsetSec:
+                    type: integer
+                    nullable: true
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScheduleEntry'
+                  updatedAt:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Devices]
+      summary: Update device feeding schedule
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - name: If-Match
+          in: header
+          schema:
+            type: string
+          description: ETag version for optimistic concurrency control
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                  default: true
+                timezone:
+                  type: string
+                  maxLength: 100
+                timezoneOffsetSec:
+                  type: integer
+                  minimum: -43200
+                  maximum: 50400
+                entries:
+                  type: array
+                  maxItems: 8
+                  items:
+                    $ref: '#/components/schemas/ScheduleEntry'
+                  default: []
+      responses:
+        '200':
+          description: Schedule updated
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  deviceId:
+                    type: string
+                  version:
+                    type: integer
+                  enabled:
+                    type: boolean
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScheduleEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /devices/{deviceId}/schedule/apply-status:
+    get:
+      tags: [Devices]
+      summary: Get schedule apply status on device
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Apply status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  deviceId:
+                    type: string
+                  applied:
+                    type: boolean
+                  appliedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  pendingConfigId:
+                    type: string
+                    nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/config-file:
+    post:
+      tags: [Devices]
+      summary: Generate config file for device
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [json]
+          description: Return JSON metadata instead of binary download
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                wifiSsid:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                wifiPassword:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                address:
+                  type: string
+                  maxLength: 1000
+                  nullable: true
+                addressNote:
+                  type: string
+                  maxLength: 1000
+                  nullable: true
+                timezone:
+                  type: string
+                  maxLength: 100
+                timezoneOffsetSec:
+                  type: integer
+                  minimum: -43200
+                  maximum: 50400
+                keepSetupApEnabled:
+                  type: boolean
+                feedingSchedule:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: false
+                    items:
+                      type: array
+                      maxItems: 8
+                      items:
+                        $ref: '#/components/schemas/ScheduleEntry'
+      responses:
+        '200':
+          description: Config file (binary download or JSON metadata)
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigFileJsonResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /devices/{deviceId}/config-file/regenerate:
+    post:
+      tags: [Devices]
+      summary: Regenerate config file using existing config
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [json]
+      responses:
+        '200':
+          description: Regenerated config file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigFileJsonResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /devices/{deviceId}/config-file/{configId}/confirm:
+    post:
+      tags: [Devices]
+      summary: Device confirms config file was uploaded
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - $ref: '#/components/parameters/configId'
+      responses:
+        '200':
+          description: Config upload confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  configId:
+                    type: string
+                  status:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/config-file/{configId}/applied:
+    post:
+      tags: [Devices]
+      summary: Device confirms config was applied
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - $ref: '#/components/parameters/configId'
+      responses:
+        '200':
+          description: Config apply confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  configId:
+                    type: string
+                  status:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/commands/feed-now:
+    post:
+      tags: [Devices]
+      summary: Send feed-now command to device
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - name: Idempotency-Key
+          in: header
+          schema:
+            type: string
+            format: uuid
+          description: UUID v4 for idempotent retry safety
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [openDurationMs]
+              properties:
+                openDurationMs:
+                  type: integer
+                  minimum: 100
+                  maximum: 600000
+                  description: Gate open duration in milliseconds. Server implements watchdog timer for safety.
+      responses:
+        '202':
+          description: Command accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  requestId:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending, queued]
+                  cached:
+                    type: boolean
+                    description: true if this is a cached response for a duplicate Idempotency-Key
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /devices/{deviceId}/commands:
+    get:
+      tags: [Devices]
+      summary: List commands for a device
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, published, accepted, rejected, completed, failed, timeout, queued]
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [feed_once]
+      responses:
+        '200':
+          description: Command list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  commands:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Command'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/commands/{requestId}:
+    get:
+      tags: [Devices]
+      summary: Get command status
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - $ref: '#/components/parameters/requestId'
+      responses:
+        '200':
+          description: Command details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  command:
+                    $ref: '#/components/schemas/Command'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/command-queue:
+    get:
+      tags: [Devices]
+      summary: List queued commands (device was offline)
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Queued commands
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommandQueueItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/command-queue/{requestId}:
+    delete:
+      tags: [Devices]
+      summary: Remove a queued command before it executes
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - $ref: '#/components/parameters/requestId'
+      responses:
+        '200':
+          description: Command removed from queue
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Command not in queue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Command already executed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /devices/{deviceId}/events:
+    get:
+      tags: [Devices]
+      summary: List device events log
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: eventType
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: source
+          in: query
+          schema:
+            type: string
+            maxLength: 50
+        - name: requestId
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: configId
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: from
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+        - name: to
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+      responses:
+        '200':
+          description: Device events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DeviceEvent'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/feeding-history:
+    get:
+      tags: [Devices]
+      summary: List feeding history for a device
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [remote, schedule, manual, test]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [completed, failed, timeout, cancelled]
+        - name: requestId
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: from
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+        - name: to
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+      responses:
+        '200':
+          description: Feeding history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  feedingHistory:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FeedingHistory'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/config-generations:
+    get:
+      tags: [Devices]
+      summary: List config generations for a device
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [generated, downloaded, applied, expired, revoked, failed]
+        - name: from
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+        - name: to
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+      responses:
+        '200':
+          description: Config generations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  configGenerations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConfigGeneration'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+
+  # ─── Admin: General ──────────────────────────────────────────────────────────
+
+  /admin/ping:
+    get:
+      tags: [Admin]
+      summary: Admin ping
+      responses:
+        '200':
+          description: Pong
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+
+  /admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: Admin dashboard summary
+      responses:
+        '200':
+          description: Admin dashboard
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  totalUsers:
+                    type: integer
+                  totalDevices:
+                    type: integer
+                  onlineDevices:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ─── Admin: Users ────────────────────────────────────────────────────────────
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: List all users
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/users/{userId}:
+    get:
+      tags: [Admin]
+      summary: Get user by ID
+      parameters:
+        - $ref: '#/components/parameters/userId'
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin]
+      summary: Update user
+      parameters:
+        - $ref: '#/components/parameters/userId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                role:
+                  type: string
+                  enum: [user, admin]
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/users/{userId}/disable:
+    post:
+      tags: [Admin]
+      summary: Disable user account
+      parameters:
+        - $ref: '#/components/parameters/userId'
+      responses:
+        '200':
+          description: User disabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/users/{userId}/enable:
+    post:
+      tags: [Admin]
+      summary: Enable user account
+      parameters:
+        - $ref: '#/components/parameters/userId'
+      responses:
+        '200':
+          description: User enabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/users/{userId}/reset-password:
+    post:
+      tags: [Admin]
+      summary: Reset user password
+      parameters:
+        - $ref: '#/components/parameters/userId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newPassword]
+              properties:
+                newPassword:
+                  type: string
+                  minLength: 8
+                  maxLength: 255
+      responses:
+        '200':
+          description: Password reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── Admin: Devices ──────────────────────────────────────────────────────────
+
+  /admin/devices:
+    get:
+      tags: [Admin]
+      summary: List all devices
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [not_configured, linked, config_generated, configured, online, offline, disabled, revoked, unlinked]
+        - name: ownerUserId
+          in: query
+          schema:
+            type: integer
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: Device list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  devices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Device'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin]
+      summary: Create a new device
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deviceId:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                machineCode:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                pairingCode:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                deviceSecret:
+                  type: string
+                  minLength: 8
+                  maxLength: 255
+                firmwareVersion:
+                  type: string
+                  maxLength: 50
+                status:
+                  type: string
+                  enum: [not_configured, linked, config_generated, configured, online, offline, disabled, revoked, unlinked]
+                  default: not_configured
+                mqttServerId:
+                  type: integer
+                mqttUsername:
+                  type: string
+                  minLength: 3
+                  maxLength: 150
+                mqttPassword:
+                  type: string
+                  minLength: 8
+                  maxLength: 255
+      responses:
+        '201':
+          description: Device created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  device:
+                    $ref: '#/components/schemas/Device'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /admin/devices/{deviceId}:
+    get:
+      tags: [Admin]
+      summary: Get device by ID (admin)
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Device details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  device:
+                    $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin]
+      summary: Update device (admin)
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                  maxLength: 255
+                machineCode:
+                  type: string
+                  maxLength: 100
+                firmwareVersion:
+                  type: string
+                  maxLength: 50
+                status:
+                  type: string
+                  enum: [not_configured, linked, config_generated, configured, online, offline, disabled, revoked, unlinked]
+      responses:
+        '200':
+          description: Device updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  device:
+                    $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/devices/{deviceId}/disable:
+    post:
+      tags: [Admin]
+      summary: Disable device
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Device disabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  device:
+                    $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/devices/{deviceId}/enable:
+    post:
+      tags: [Admin]
+      summary: Enable device
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Device enabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  device:
+                    $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/devices/{deviceId}/revoke:
+    post:
+      tags: [Admin]
+      summary: Revoke device
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Device revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  device:
+                    $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/devices/{deviceId}/unlink:
+    post:
+      tags: [Admin]
+      summary: Unlink device from owner (admin)
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Device unlinked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/devices/{deviceId}/transfer-owner:
+    post:
+      tags: [Admin]
+      summary: Transfer device ownership
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ownerUserId]
+              properties:
+                ownerUserId:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Ownership transferred
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  device:
+                    $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/devices/{deviceId}/qr:
+    get:
+      tags: [Admin]
+      summary: Get device QR code
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: QR code data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  qrData:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/devices/{deviceId}/pairing-code/status:
+    get:
+      tags: [Admin]
+      summary: Get device pairing code status
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: Pairing code status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  used:
+                    type: boolean
+                  usedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/devices/{deviceId}/rotate-pairing-code:
+    post:
+      tags: [Admin]
+      summary: Rotate device pairing code
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: New pairing code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  pairingCode:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/devices/{deviceId}/link-attempts:
+    get:
+      tags: [Admin]
+      summary: List device link attempts
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: Link attempts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  items:
+                    type: array
+                    items:
+                      type: object
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── Admin: MQTT Credentials ─────────────────────────────────────────────────
+
+  /admin/devices/{deviceId}/mqtt-credential:
+    get:
+      tags: [Admin]
+      summary: Get active MQTT credential for device
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: MQTT credential
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  credential:
+                    $ref: '#/components/schemas/MqttCredential'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/devices/{deviceId}/mqtt-credentials:
+    get:
+      tags: [Admin]
+      summary: List all MQTT credentials for device
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      responses:
+        '200':
+          description: MQTT credentials list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  credentials:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MqttCredential'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/devices/{deviceId}/rotate-mqtt-credential:
+    post:
+      tags: [Admin]
+      summary: Rotate MQTT credential for device
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mqttUsername:
+                  type: string
+                  minLength: 3
+                  maxLength: 150
+                mqttPassword:
+                  type: string
+                  minLength: 8
+                  maxLength: 255
+      responses:
+        '200':
+          description: Credential rotated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  credential:
+                    $ref: '#/components/schemas/MqttCredential'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/devices/{deviceId}/rotate-device-secret:
+    post:
+      tags: [Admin]
+      summary: Rotate device secret
+      parameters:
+        - $ref: '#/components/parameters/deviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deviceSecret:
+                  type: string
+                  minLength: 8
+                  maxLength: 255
+      responses:
+        '200':
+          description: Device secret rotated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── Admin: MQTT Servers ─────────────────────────────────────────────────────
+
+  /admin/mqtt-servers:
+    get:
+      tags: [Admin]
+      summary: List MQTT servers
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+      responses:
+        '200':
+          description: MQTT server list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  servers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MqttServer'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin]
+      summary: Create MQTT server
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [host, port, protocol]
+              properties:
+                host:
+                  type: string
+                  maxLength: 255
+                port:
+                  type: integer
+                  minimum: 1
+                  maximum: 65535
+                protocol:
+                  type: string
+                  enum: [mqtt, mqtts, ws, wss]
+                username:
+                  type: string
+                  maxLength: 150
+                password:
+                  type: string
+                  maxLength: 255
+                isActive:
+                  type: boolean
+      responses:
+        '201':
+          description: MQTT server created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  server:
+                    $ref: '#/components/schemas/MqttServer'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/mqtt-servers/{id}:
+    get:
+      tags: [Admin]
+      summary: Get MQTT server detail
+      parameters:
+        - $ref: '#/components/parameters/mqttServerId'
+      responses:
+        '200':
+          description: MQTT server detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  server:
+                    $ref: '#/components/schemas/MqttServer'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin]
+      summary: Update MQTT server
+      parameters:
+        - $ref: '#/components/parameters/mqttServerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                host:
+                  type: string
+                  maxLength: 255
+                port:
+                  type: integer
+                  minimum: 1
+                  maximum: 65535
+                protocol:
+                  type: string
+                  enum: [mqtt, mqtts, ws, wss]
+                isActive:
+                  type: boolean
+      responses:
+        '200':
+          description: MQTT server updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  server:
+                    $ref: '#/components/schemas/MqttServer'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/mqtt-servers/{id}/test:
+    post:
+      tags: [Admin]
+      summary: Test MQTT server connection
+      parameters:
+        - $ref: '#/components/parameters/mqttServerId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  connected:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─── Admin: Operation Logs ───────────────────────────────────────────────────
+
+  /admin/device-commands:
+    get:
+      tags: [Admin]
+      summary: List all device commands (admin)
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: deviceId
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: requestId
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, published, accepted, rejected, completed, failed, timeout, queued]
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [feed_once]
+        - name: from
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+        - name: to
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+      responses:
+        '200':
+          description: Command list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  commands:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Command'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/device-events:
+    get:
+      tags: [Admin]
+      summary: List all device events (admin)
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: deviceId
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: eventType
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: from
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+        - name: to
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+      responses:
+        '200':
+          description: Device events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DeviceEvent'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/feeding-histories:
+    get:
+      tags: [Admin]
+      summary: List all feeding histories (admin)
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: deviceId
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [remote, schedule, manual, test]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [completed, failed, timeout, cancelled]
+        - name: from
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+        - name: to
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+      responses:
+        '200':
+          description: Feeding histories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  feedingHistories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FeedingHistory'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/config-generations:
+    get:
+      tags: [Admin]
+      summary: List all config generations (admin)
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: deviceId
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [generated, downloaded, applied, expired, revoked, failed]
+        - name: from
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+        - name: to
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+      responses:
+        '200':
+          description: Config generations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  configGenerations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConfigGeneration'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/config-generations/{configId}:
+    get:
+      tags: [Admin]
+      summary: Get config generation detail (admin)
+      parameters:
+        - $ref: '#/components/parameters/configId'
+      responses:
+        '200':
+          description: Config generation detail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  configGeneration:
+                    $ref: '#/components/schemas/ConfigGeneration'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/config-generations/{configId}/revoke:
+    post:
+      tags: [Admin]
+      summary: Revoke a config generation
+      parameters:
+        - $ref: '#/components/parameters/configId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 255
+      responses:
+        '200':
+          description: Config generation revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  configGeneration:
+                    $ref: '#/components/schemas/ConfigGeneration'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Config already revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ─── Admin: System Settings & Audit Logs ─────────────────────────────────────
+
+  /admin/system-settings:
+    get:
+      tags: [Admin]
+      summary: Get system settings
+      responses:
+        '200':
+          description: System settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  settings:
+                    $ref: '#/components/schemas/SystemSettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    patch:
+      tags: [Admin]
+      summary: Update system settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accessTokenExpirySeconds:
+                  type: integer
+                  minimum: 60
+                refreshTokenExpirySeconds:
+                  type: integer
+                  minimum: 3600
+                maxLoginAttempts:
+                  type: integer
+                  minimum: 1
+                lockoutDurationSeconds:
+                  type: integer
+                  minimum: 60
+                configTtlSeconds:
+                  type: integer
+                  minimum: 3600
+      responses:
+        '200':
+          description: Settings updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  settings:
+                    $ref: '#/components/schemas/SystemSettings'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: List audit logs
+      parameters:
+        - $ref: '#/components/parameters/page'
+        - $ref: '#/components/parameters/pageSize'
+        - name: actorUserId
+          in: query
+          schema:
+            type: integer
+        - name: action
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: from
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+        - name: to
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+      responses:
+        '200':
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  logs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        actorUserId:
+                          type: integer
+                          nullable: true
+                        actorRole:
+                          type: string
+                          nullable: true
+                        action:
+                          type: string
+                        targetType:
+                          type: string
+                          nullable: true
+                        targetId:
+                          type: string
+                          nullable: true
+                        clientIp:
+                          type: string
+                          nullable: true
+                        createdAt:
+                          type: string
+                          format: date-time
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/audit-logs/export:
+    get:
+      tags: [Admin]
+      summary: Export audit logs as CSV
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+        - name: to
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+      responses:
+        '200':
+          description: CSV export
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ─── Tags ────────────────────────────────────────────────────────────────────
+
+tags:
+  - name: Health
+    description: Server health check
+  - name: Auth
+    description: Authentication and token management
+  - name: Account
+    description: User account management
+  - name: Dashboard
+    description: User dashboard
+  - name: Events
+    description: Server-Sent Events stream
+  - name: Devices
+    description: Device management and commands
+  - name: Admin
+    description: Admin-only operations (requires role=admin)
