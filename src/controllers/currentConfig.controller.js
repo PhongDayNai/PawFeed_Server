@@ -19,16 +19,38 @@ function requestContext(req) {
 
 export async function getCurrentConfig(req, res) {
   const currentConfig = await getDeviceCurrentConfig(req.params.deviceId, req.user.id);
+  // Set ETag header using version (latestConfigVersion)
+  const version = currentConfig.version ?? 0;
+  res.set('ETag', `"${version}"`);
   return sendSuccess(res, currentConfig);
 }
 
 export async function putCurrentConfig(req, res) {
+  const deviceId = req.params.deviceId;
+  const userId = req.user.id;
+
+  // Validate If-Match header if present
+  const ifMatch = req.headers['if-match'];
+  if (ifMatch) {
+    const currentConfig = await getDeviceCurrentConfig(deviceId, userId);
+    const currentVersion = currentConfig.version ?? 0;
+    const matchVersion = parseInt(ifMatch.replace(/"/g, ''), 10);
+    if (!isNaN(matchVersion) && matchVersion !== currentVersion) {
+      throw conflictError('Resource was modified.', 'VERSION_CONFLICT', {
+        currentVersion,
+        yourVersion: matchVersion
+      });
+    }
+  }
+
   const currentConfig = await saveDeviceCurrentConfig(
-    req.params.deviceId,
-    req.user.id,
+    deviceId,
+    userId,
     req.body,
     requestContext(req)
   );
+  // Set ETag header for new version
+  res.set('ETag', `"${currentConfig.version ?? 0}"`);
   return sendSuccess(res, currentConfig);
 }
 

@@ -81,9 +81,11 @@ function toScheduleResponse(scheduleRow, itemRows = [], deviceId = undefined, de
 function toCurrentConfigResponse(deviceRow, currentRow, schedule, defaults = {}) {
   const timezone = currentRow?.timezone || schedule.timezone || defaults.defaultTimezone || FALLBACK_TIMEZONE;
   const timezoneOffsetSec = Number(currentRow?.timezone_offset_sec ?? schedule.timezoneOffsetSec ?? defaults.defaultTimezoneOffsetSec ?? FALLBACK_TIMEZONE_OFFSET_SEC);
+  const latestConfigVersion = Number(currentRow?.latest_config_version || 0);
 
   return {
     deviceId: deviceRow.device_id,
+    version: latestConfigVersion,
     wifiSsid: currentRow?.wifi_ssid || null,
     hasWifiPassword: Boolean(currentRow?.wifi_password && String(currentRow.wifi_password).length > 0),
     address: currentRow?.address || null,
@@ -100,7 +102,7 @@ function toCurrentConfigResponse(deviceRow, currentRow, schedule, defaults = {})
       }))
     },
     latestConfigId: currentRow?.latest_config_id || null,
-    latestConfigVersion: Number(currentRow?.latest_config_version || 0),
+    latestConfigVersion,
     activeConfigId: deviceRow.active_config_id || null,
     activeConfigVersion: Number(deviceRow.active_config_version || 0),
     lastConfigGeneratedAt: toIso(currentRow?.last_config_generated_at),
