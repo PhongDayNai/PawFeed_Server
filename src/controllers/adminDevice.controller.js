@@ -1,6 +1,7 @@
 import { sendCreated, sendPaginated, sendSuccess } from '../utils/response.js';
 import {
   createAdminDevice,
+  deleteAdminDevice,
   disableAdminDevice,
   enableAdminDevice,
   getAdminDevice,
@@ -27,6 +28,11 @@ function requestContext(req) {
 export async function createDevice(req, res) {
   const device = await createAdminDevice(req.body, requestContext(req));
   return sendCreated(res, { device });
+}
+
+export async function deleteDevice(req, res) {
+  const result = await deleteAdminDevice(req.params.deviceId, requestContext(req));
+  return sendSuccess(res, result);
 }
 
 export async function listDevices(req, res) {

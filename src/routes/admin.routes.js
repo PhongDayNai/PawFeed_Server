@@ -9,6 +9,7 @@ import { adminDashboard } from '../controllers/adminDashboard.controller.js';
 import { listAdminDeviceCommands } from '../controllers/command.controller.js';
 import {
   createDevice,
+  deleteDevice,
   disableDevice,
   enableDevice,
   getDevice,
@@ -124,6 +125,7 @@ router.patch('/mqtt-servers/:id', adminSensitiveRateLimiter, validateParams(mqtt
 router.post('/mqtt-servers/:id/test', adminSensitiveRateLimiter, validateParams(mqttServerParamsSchema), validateBody(testMqttServerSchema), asyncHandler(postMqttServerTest));
 
 router.post('/devices', adminSensitiveRateLimiter, validateBody(createAdminDeviceSchema), asyncHandler(createDevice));
+router.delete('/devices/:deviceId', adminSensitiveRateLimiter, validateParams(adminDeviceParamsSchema), asyncHandler(deleteDevice));
 router.get('/devices', validateQuery(listAdminDevicesQuerySchema), asyncHandler(listDevices));
 router.get('/devices/:deviceId', validateParams(adminDeviceParamsSchema), asyncHandler(getDevice));
 router.patch('/devices/:deviceId', adminSensitiveRateLimiter, validateParams(adminDeviceParamsSchema), validateBody(updateAdminDeviceSchema), asyncHandler(updateDevice));

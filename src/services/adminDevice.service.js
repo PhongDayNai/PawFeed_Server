@@ -21,6 +21,7 @@ import {
 } from '../utils/normalize.js';
 import { buildPaginationMeta, paginationFromQuery } from '../utils/pagination.js';
 import { writeAuditLog } from './audit.service.js';
+import { syncPassword, deleteCredential } from './mqttPasswordSync.service.js';
 
 const deviceStatusSet = new Set([
   'not_configured',
@@ -340,6 +341,11 @@ export async function createAdminDevice(input, context) {
     });
 
     await connection.commit();
+
+    // Sync MQTT credentials to broker (non-blocking, don't fail device creation if sync fails)
+    syncPassword(mqttUsername, mqttPassword).catch((syncError) => {
+      console.error('MQTT sync failed after device creation:', syncError);
+    });
 
     const deviceRow = await findAdminDeviceByDeviceId(deviceId);
     return toAdminDevice(deviceRow, { includeQrPayload: true, includePairingCode: true });
@@ -697,4 +703,52 @@ export async function listAdminDeviceLinkAttempts(deviceId, query = {}) {
     })),
     meta: buildPaginationMeta({ page, pageSize, totalItems: Number(countRows[0]?.total || 0) })
   };
+}
+
+export async function deleteAdminDevice(deviceId, context = {}) {
+  const connection = await getPool().getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const device = await findAdminDeviceByDeviceId(normalizeDeviceId(deviceId), connection);
+    if (!device) throw notFoundError('Device was not found.', 'DEVICE_NOT_FOUND');
+
+    // Get all MQTT credentials for this device before deletion
+    const [credentials] = await connection.execute(
+      'SELECT mqtt_username FROM device_mqtt_credentials WHERE device_id = ?',
+      [device.id]
+    );
+
+    // Delete device (cascade should handle related records based on FK constraints)
+    await connection.execute('DELETE FROM devices WHERE id = ?', [device.id]);
+
+    await writeAuditLog({
+      actorUserId: context.actorUserId,
+      action: 'admin.device.delete',
+      targetType: 'device',
+      targetId: deviceId,
+      payload: { deletedDeviceId: device.device_id, mqttCredentialsCount: credentials.length },
+      clientIp: context.clientIp,
+      userAgent: context.userAgent,
+      connection
+    });
+
+    await connection.commit();
+
+    // Delete MQTT credentials from broker (non-blocking)
+    for (const cred of credentials) {
+      if (cred.mqtt_username) {
+        deleteCredential(cred.mqtt_username).catch((syncError) => {
+          console.error('MQTT credential delete failed for', cred.mqtt_username, ':', syncError);
+        });
+      }
+    }
+
+    return { deleted: true, deviceId, credentialsDeleted: credentials.length };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }

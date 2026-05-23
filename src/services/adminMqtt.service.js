@@ -6,6 +6,7 @@ import { buildPaginationMeta, paginationFromQuery } from '../utils/pagination.js
 import { findAdminDeviceByDeviceId } from './adminDevice.service.js';
 import { writeAuditLog } from './audit.service.js';
 import { buildMqttAdminTestConfig, testMqttConnectivity } from './mqttConnectionTest.service.js';
+import { syncPassword } from './mqttPasswordSync.service.js';
 
 function toIso(value) { return value ? new Date(value).toISOString() : null; }
 function toBoolean(value) { return Boolean(Number(value)); }
@@ -204,6 +205,11 @@ export async function rotateDeviceMqttCredential(deviceId, input = {}, context =
       await writeAuditLog({ actorUserId: context.actorUserId, action: 'admin.device.rotate_mqtt_password', targetType: 'device', targetId: device.device_id, payload: { mqttServerId: Number(mqttServerId), mqttUsername: current.mqtt_username }, clientIp: context.clientIp, userAgent: context.userAgent, connection });
       await connection.commit();
 
+      // Sync password to broker (non-blocking, don't fail rotation if sync fails)
+      syncPassword(current.mqtt_username, mqttPassword).catch((syncError) => {
+        console.error('MQTT sync failed after password rotation:', syncError);
+      });
+
       const refreshed = await getCredentialByDevice(device.device_id);
       return {
         credential: toMqttCredential(refreshed, { includePasswordOnce: true }),
@@ -228,6 +234,11 @@ export async function rotateDeviceMqttCredential(deviceId, input = {}, context =
     );
     await writeAuditLog({ actorUserId: context.actorUserId, action: 'admin.device.rotate_mqtt_credential', targetType: 'device', targetId: device.device_id, payload: { mqttServerId: Number(mqttServerId), mqttUsername, deactivateOld }, clientIp: context.clientIp, userAgent: context.userAgent, connection });
     await connection.commit();
+
+    // Sync new credential to broker (non-blocking, don't fail rotation if sync fails)
+    syncPassword(mqttUsername, mqttPassword).catch((syncError) => {
+      console.error('MQTT sync failed after credential rotation:', syncError);
+    });
 
     const [rows] = await getPool().execute(
       `SELECT c.*, d.device_id, d.machine_code, ms.name AS mqtt_server_name, ms.host, ms.mqtt_port, ms.tls_port, ms.use_tls
