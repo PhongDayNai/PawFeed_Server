@@ -10,7 +10,7 @@
     "deviceId": "feeder001",
     "wifiSsid": "Home_Wifi_5G",
     "wifiPass": "12345678",
-    "mqttHost": "192.168.1.88",
+    "mqttHost": "192.168.0.100",
     "mqttPort": 1883,
     "mqttUseTls": false,
     "mqttUser": "feeder001",

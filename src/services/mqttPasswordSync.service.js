@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const MQTT_SYNC_API_URL = process.env.MQTT_SYNC_API_URL || 'http://192.168.1.88:3001';
+const MQTT_SYNC_API_URL = process.env.MQTT_SYNC_API_URL || 'http://192.168.0.100:3001';
 const MQTT_SYNC_API_TOKEN = process.env.MQTT_SYNC_API_TOKEN || 'sk-pdnpf';
 const SYNC_TIMEOUT = 10000; // 10 seconds
 

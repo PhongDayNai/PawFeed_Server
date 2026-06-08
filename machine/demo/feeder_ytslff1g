@@ -1,0 +1,31 @@
+{
+  "version": 3,
+  "configId": "cfg_feeder_ytslff1g_20260608_102258_uoibha2h",
+  "configVersion": 2,
+  "issuedAt": 1780914178,
+  "expiresAt": 1780915978,
+  "machineCode": "PF-ESP8266-001",
+  "deviceId": "feeder_ytslff1g",
+  "wifiSsid": "TP-LINK_DC9F",
+  "wifiPass": "123456789",
+  "mqttHost": "192.168.0.100",
+  "mqttPort": 1883,
+  "mqttUseTls": false,
+  "mqttUser": "feeder_ytslff1g",
+  "mqttPass": "0FFEjjyzZNvgfp4BAgSuSxt4JlsXxwYV",
+  "timezone": "Asia/Bangkok",
+  "timezoneOffsetSec": 25200,
+  "keepSetupApEnabled": false,
+  "feedingSchedule": {
+    "enabled": false,
+    "items": []
+  },
+  "provider": {
+    "name": "Phong Dương Hùng",
+    "brand": "Pet Feeder IoT",
+    "website": "https://your-domain.com",
+    "contact": "your-email@example.com",
+    "note": "Thiết bị và file cấu hình được cung cấp bởi Phong Dương Hùng."
+  },
+  "signature": "772f9787ca716fb591408b3de136c608924820a61577b054c4b85cb528429322"
+}
