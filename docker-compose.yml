@@ -6,7 +6,7 @@ services:
     env_file:
       - .env
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 3000
       DB_HOST: db
@@ -53,7 +53,7 @@ services:
       SEED_DEMO_MQTT_USERNAME: ${SEED_DEMO_MQTT_USERNAME:-feeder001}
       SEED_DEMO_MQTT_PASSWORD: ${SEED_DEMO_MQTT_PASSWORD:-feeder001_dev_password}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "8871:3000"
     depends_on:
       db:
         condition: service_healthy
@@ -72,7 +72,7 @@ services:
     ports:
       - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - ~/data/pawfeed-data:/var/lib/mysql
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
       interval: 10s
