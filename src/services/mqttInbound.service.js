@@ -337,6 +337,9 @@ async function insertFeedingHistory(devicePk, payload, executor) {
   const requestId = toTextOrNull(payload.requestId);
   const scheduleId = toTextOrNull(pickFirst(payload.scheduleId, payload.mealId));
 
+  // Backfill started_at từ device_events (event feed_started khớp request_id).
+  // Fallback: nếu không tìm thấy feed_started event, dùng finished_at - open_duration_ms.
+  // Trường hợp xấu nhất: cả 2 đều miss -> NULL (giữ nguyên hành vi cũ).
   await executor.execute(
     `INSERT INTO feeding_histories (
       device_id,
@@ -349,8 +352,20 @@ async function insertFeedingHistory(devicePk, payload, executor) {
       status,
       payload,
       created_at
-    ) VALUES (?, ?, ?, ?, ?, NULL, NOW(), 'completed', ?, NOW())`,
-    [devicePk, source, requestId, scheduleId, openDurationMs, payloadToJson(payload)]
+    ) VALUES (
+      ?, ?, ?, ?, ?,
+      COALESCE(
+        (SELECT created_at FROM device_events
+          WHERE device_id = ? AND event_type = 'feed_started' AND request_id = ?
+          ORDER BY created_at DESC LIMIT 1),
+        DATE_SUB(NOW(), INTERVAL ? MICROSECOND),
+        NULL
+      ),
+      NOW(), 'completed', ?, NOW()
+    )`,
+    [devicePk, source, requestId, scheduleId, openDurationMs,
+     devicePk, requestId, openDurationMs * 1000,
+     payloadToJson(payload)]
   );
 
   return { inserted: true, source, requestId, scheduleId, openDurationMs };

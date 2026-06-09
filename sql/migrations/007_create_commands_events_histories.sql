@@ -85,5 +85,5 @@ CREATE TABLE IF NOT EXISTS feeding_histories (
   INDEX idx_feeding_histories_request_id (request_id),
   INDEX idx_feeding_histories_started_at (started_at),
   INDEX idx_feeding_histories_created_at (created_at),
-  CONSTRAINT chk_feeding_histories_open_duration CHECK (open_duration_ms BETWEEN 300 AND 10000)
+  CONSTRAINT chk_feeding_histories_open_duration CHECK (open_duration_ms BETWEEN 100 AND 600000)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
