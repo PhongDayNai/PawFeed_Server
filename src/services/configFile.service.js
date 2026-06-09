@@ -508,8 +508,10 @@ async function persistGeneratedConfig({
   });
 }
 
-function prepareInputFromRequest(input, defaults, currentRow) {
-  const feedingSchedule = normalizeFeedingSchedule(input.feedingSchedule || { enabled: false, items: [] });
+function prepareInputFromRequest(input, defaults, currentRow, savedSchedule) {
+  const feedingSchedule = input.feedingSchedule !== undefined && input.feedingSchedule !== null
+    ? normalizeFeedingSchedule(input.feedingSchedule)
+    : (savedSchedule || { enabled: false, items: [] });
   const wifiSsidFromRequest = input.wifiSsid !== undefined && input.wifiSsid !== null ? input.wifiSsid.trim() : null;
   const wifiSsid = wifiSsidFromRequest || (currentRow?.wifi_ssid || null);
   return {
@@ -565,7 +567,7 @@ async function generateConfigFileInternal({ deviceId, userId, input, context, re
     const savedSchedule = await getSavedSchedule(device.id, currentRow, connection);
     const preparedInput = regenerate
       ? prepareInputFromCurrent(currentRow, savedSchedule, defaults)
-      : prepareInputFromRequest(input, defaults, currentRow);
+      : prepareInputFromRequest(input, defaults, currentRow, savedSchedule);
 
     const latestGenerationVersion = await getLatestGenerationVersion(device.id, connection, true);
     const configVersion = computeNextConfigVersion(device, currentRow, latestGenerationVersion);
