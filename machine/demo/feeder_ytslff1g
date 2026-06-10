@@ -1,9 +1,9 @@
 {
   "version": 3,
-  "configId": "cfg_feeder_ytslff1g_20260608_102258_uoibha2h",
-  "configVersion": 2,
-  "issuedAt": 1780914178,
-  "expiresAt": 1780915978,
+  "configId": "cfg_feeder_ytslff1g_20260609_172017_t4ofkodu",
+  "configVersion": 10,
+  "issuedAt": 1781025617,
+  "expiresAt": 1781027417,
   "machineCode": "PF-ESP8266-001",
   "deviceId": "feeder_ytslff1g",
   "wifiSsid": "TP-LINK_DC9F",
@@ -17,8 +17,15 @@
   "timezoneOffsetSec": 25200,
   "keepSetupApEnabled": false,
   "feedingSchedule": {
-    "enabled": false,
-    "items": []
+    "enabled": true,
+    "items": [
+      {
+        "id": "meal_1",
+        "time": "00:25",
+        "openDurationMs": 5000,
+        "enabled": true
+      }
+    ]
   },
   "provider": {
     "name": "Phong Dương Hùng",
@@ -27,5 +34,5 @@
     "contact": "your-email@example.com",
     "note": "Thiết bị và file cấu hình được cung cấp bởi Phong Dương Hùng."
   },
-  "signature": "772f9787ca716fb591408b3de136c608924820a61577b054c4b85cb528429322"
+  "signature": "c61e30266a73c09983ac9cb5d87f75372d0597e8b0647a0bbebed911618ad181"
 }
