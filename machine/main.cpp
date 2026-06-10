@@ -936,6 +936,9 @@ void enableSetupAp(bool temporary) {
 }
 
 void disableSetupApIfAllowed() {
+  // Always keep Setup AP enabled for config updates
+  return;
+
   if (!apEnabled) return;
   if (!hasActiveConfig) return;
   if (activeConfig.keepSetupApEnabled) return;
@@ -1126,7 +1129,7 @@ bool connectMqttWithConfig(const AppConfig &c, bool publishOnConnect) {
   }
 
   if (!ok) {
-    Serial.printf("[MQTT] Connect failed rc=%d\n", mqttClient->state());
+    Serial.printf("[MQTT] Connect failed rc=%d (host=%s, port=%d)\n", mqttClient->state(), c.mqttHost.c_str(), c.mqttPort);
     return false;
   }
 
@@ -1221,7 +1224,10 @@ void publishState() {
 }
 
 void publishTelemetry() {
+  Serial.printf("[TELEMETRY] Checking: hasActiveConfig=%d, wifiConnected=%d, mqttConnected=%d\n",
+                hasActiveConfig, (WiFi.status() == WL_CONNECTED), (mqttClient && mqttClient->connected()));
   if (!hasActiveConfig || !mqttClient->connected()) return;
+  Serial.println("[TELEMETRY] Publishing telemetry to MQTT...");
 
   DynamicJsonDocument doc(1024);
   doc["deviceId"] = activeConfig.deviceId;
@@ -1969,7 +1975,7 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(SETUP_BUTTON_PIN, INPUT_PULLUP);
 
-  feederServo.attach(FEEDER_PIN);
+  feederServo.attach(FEEDER_PIN, 500, 2500);
   applyDoorState(false);
 
   if (!LittleFS.begin()) {
@@ -1982,11 +1988,8 @@ void setup() {
 
   WiFi.mode(WIFI_AP_STA);
 
-  if (!hasActiveConfig) {
-    enableSetupAp(false);
-  } else if (activeConfig.keepSetupApEnabled) {
-    enableSetupAp(false);
-  }
+  // Always enable Setup AP on boot to allow easy OTA/Config upload
+  enableSetupAp(false);
 
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/ping", HTTP_GET, handlePing);
