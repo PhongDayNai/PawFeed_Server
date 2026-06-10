@@ -63,7 +63,7 @@ const uint8_t MAX_SCHEDULE_ITEMS = 8;
 const uint32_t MIN_OPEN_DURATION_MS = 100;
 const uint32_t MAX_OPEN_DURATION_MS = 600000;
 
-const uint32_t WIFI_CONNECT_TIMEOUT_MS = 15000;
+const uint32_t WIFI_CONNECT_TIMEOUT_MS = 20000;
 const uint32_t MQTT_CONNECT_TIMEOUT_MS = 10000;
 const uint32_t MQTT_RECONNECT_INTERVAL_MS = 5000;
 const uint32_t TELEMETRY_INTERVAL_MS = 15000;
@@ -86,6 +86,19 @@ PubSubClient mqttSecure(wifiClientSecure);
 PubSubClient *mqttClient = &mqttPlain;
 
 Servo feederServo;
+
+enum ApplyStatus {
+  APPLY_IDLE = 0,
+  APPLY_STARTING,
+  APPLY_TESTING_WIFI,
+  APPLY_TESTING_TIME,
+  APPLY_TESTING_MQTT,
+  APPLY_SUCCESS,
+  APPLY_FAILED
+};
+volatile ApplyStatus applyStatus = APPLY_IDLE;
+String applyErrorCode = "";
+String applyErrorMessage = "";
 
 // ================= DATA STRUCTURES =================
 struct FeedingScheduleItem {
@@ -936,9 +949,6 @@ void enableSetupAp(bool temporary) {
 }
 
 void disableSetupApIfAllowed() {
-  // Always keep Setup AP enabled for config updates
-  return;
-
   if (!apEnabled) return;
   if (!hasActiveConfig) return;
   if (activeConfig.keepSetupApEnabled) return;
@@ -1027,6 +1037,11 @@ bool connectWiFiWithConfig(const AppConfig &c, uint32_t timeoutMs) {
 
   Serial.printf("[WIFI] Connecting to SSID: %s\n", c.wifiSsid.c_str());
 
+  // Đảm bảo ngắt kết nối cũ hoàn toàn và làm sạch cấu hình trước khi kết nối mới
+  WiFi.persistent(false);
+  WiFi.disconnect(true);
+  delay(200);
+
   WiFi.mode(WIFI_AP_STA);
   WiFi.begin(c.wifiSsid.c_str(), c.wifiPass.c_str());
 
@@ -1042,7 +1057,7 @@ bool connectWiFiWithConfig(const AppConfig &c, uint32_t timeoutMs) {
     return true;
   }
 
-  Serial.println("[WIFI] Connect failed.");
+  Serial.printf("[WIFI] Connect failed. Status: %d\n", WiFi.status());
   return false;
 }
 
@@ -1426,75 +1441,262 @@ String providerText(const AppConfig &c) {
   return provider;
 }
 
-String htmlPage() {
-  String html = R"HTML(
+const char HTML_PAGE[] PROGMEM = R"HTML(
 <!doctype html>
 <html>
 <head>
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Pet Feeder Setup</title>
+  <title>Cài đặt thiết bị cho ăn</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: Arial, sans-serif; max-width: 860px; margin: 20px auto; padding: 0 12px; }
-    h2 { margin: 8px 0 12px; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
-    .row { margin: 8px 0; }
-    .muted { color: #666; font-size: 13px; }
-    .ok { color: #10893e; font-weight: 700; }
-    .bad { color: #d13438; font-weight: 700; }
-    .warn { color: #b36b00; font-weight: 700; }
-    button { padding: 10px 14px; border: none; border-radius: 8px; cursor: pointer; background: #2563eb; color: white; margin-top: 8px; }
-    button:disabled { background: #aaa; cursor: not-allowed; }
-    input[type=file], input[type=password], input[type=text] { width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid #ddd; border-radius: 8px; }
-    code { background: #f5f5f5; padding: 2px 6px; border-radius: 6px; }
-    pre { background: #f8f8f8; border-radius: 8px; padding: 10px; white-space: pre-wrap; }
-    .line { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 6px 0; gap: 10px; }
-    .line b { text-align: right; }
-    label { display:block; margin: 10px 0 4px; font-weight: 600; }
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+    }
+    
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: var(--bg-gradient);
+      color: var(--text-main);
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 24px 16px;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    
+    h2 {
+      text-align: center;
+      margin: 0 0 24px 0;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      background: linear-gradient(to right, #a5b4fc, #6366f1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .card:hover {
+      box-shadow: 0 8px 30px rgba(99, 102, 241, 0.1);
+    }
+    
+    h3 {
+      margin: 0 0 16px 0;
+      font-size: 18px;
+      font-weight: 600;
+      border-left: 4px solid var(--primary);
+      padding-left: 10px;
+    }
+    
+    .row { margin: 12px 0 0; }
+    
+    .muted {
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    
+    .ok { color: var(--success); font-weight: 600; }
+    .bad { color: var(--danger); font-weight: 600; }
+    .warn { color: var(--warning); font-weight: 600; }
+    
+    button {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      background: var(--primary);
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+      transition: background 0.2s, transform 0.1s;
+    }
+    
+    button:hover { background: var(--primary-hover); }
+    button:active { transform: scale(0.98); }
+    button:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; transform: none; }
+    
+    input[type=file] {
+      display: none;
+    }
+    
+    .file-upload-label {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 2px dashed rgba(99, 102, 241, 0.3);
+      border-radius: 12px;
+      padding: 24px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      background: rgba(99, 102, 241, 0.02);
+    }
+    
+    .file-upload-label:hover {
+      border-color: var(--primary);
+      background: rgba(99, 102, 241, 0.05);
+    }
+    
+    input[type=password], input[type=text] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 11px 14px;
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      background: rgba(15, 23, 42, 0.6);
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    
+    input[type=password]:focus, input[type=text]:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    
+    code {
+      background: rgba(15, 23, 42, 0.8);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-family: monospace;
+      color: #cbd5e1;
+    }
+    
+    pre {
+      background: rgba(15, 23, 42, 0.8);
+      border-radius: 10px;
+      padding: 12px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 13px;
+      color: #cbd5e1;
+      border: 1px solid var(--border-color);
+      margin-top: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 8px 0;
+      gap: 12px;
+      font-size: 14px;
+    }
+    
+    .line span { color: var(--text-muted); }
+    .line b { text-align: right; color: var(--text-main); font-weight: 500; }
+    
+    .ellipsis {
+      display: inline-block;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: bottom;
+    }
+    
+    label {
+      display: block;
+      margin: 14px 0 6px;
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--text-main);
+    }
+    
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(99, 102, 241, 0.2);
+      color: #c7d2fe;
+    }
   </style>
 </head>
 <body>
-  <h2>Pet Feeder Setup</h2>
+  <h2>Cài đặt thiết bị cho ăn</h2>
 
   <div class="card">
-    <h3>Trạng thái thiết bị</h3>
-    <div class="line"><span>Machine Code</span><b id="machineCode">-</b></div>
-    <div class="line"><span>Device ID</span><b id="deviceId">-</b></div>
-    <div class="line"><span>Active Config</span><b id="activeConfig">-</b></div>
-    <div class="line"><span>Wi-Fi</span><b id="wifi">-</b></div>
-    <div class="line"><span>AP setup</span><b id="ap">-</b></div>
-    <div class="line"><span>Đồng bộ thời gian</span><b id="time">-</b></div>
+    <h3>Thông tin thiết bị</h3>
+    <div class="line"><span>Mã phần cứng</span><b id="machineCode">-</b></div>
+    <div class="line"><span>Mã thiết bị (Device ID)</span><b id="deviceId">-</b></div>
+    <div class="line"><span>Cấu hình hiện tại</span><b id="activeConfig">-</b></div>
+    <div class="line"><span>Mạng Wi-Fi</span><b id="wifi">-</b></div>
+    <div class="line"><span>Điểm phát AP</span><b id="ap">-</b></div>
+    <div class="line"><span>Thời gian hệ thống</span><b id="time">-</b></div>
     <div class="line"><span>Kết nối máy chủ</span><b id="mqtt">-</b></div>
-    <div class="line"><span>Feeder</span><b id="mode">-</b></div>
-    <div class="muted">AP mặc định: <code>Feeder-ESP8266</code> / <code>12345678</code>, IP: <code>192.168.4.1</code></div>
+    <div class="line"><span>Trạng thái hoạt động</span><b id="mode">-</b></div>
+    <div class="muted" style="margin-top: 10px;">AP mặc định: <code>Feeder-ESP8266</code> / Mật khẩu: <code>12345678</code> (IP: <code>192.168.4.1</code>)</div>
   </div>
 
   <div class="card">
-    <h3>Upload file cấu hình</h3>
-    <p class="muted">Chọn file cấu hình không extension do Server/Mobile App/Web App tạo. Máy sẽ verify signature và chỉ preview thông tin an toàn. Chưa lưu gì cho đến khi nhập PIN và bấm Apply.</p>
-    <form method="POST" action="/upload" enctype="multipart/form-data">
-      <input type="file" name="configFile" />
-      <div class="row"><button type="submit">Upload & Preview</button></div>
+    <h3>Cập nhật cấu hình mới</h3>
+    <p class="muted" style="margin-bottom: 16px;">Chọn file cấu hình được tải về từ ứng dụng. Thiết bị sẽ xác thực bảo mật và hiển thị thông tin xem trước.</p>
+    <form id="uploadForm">
+      <label class="file-upload-label" for="configFile">
+        <span style="font-size: 24px; margin-bottom: 8px;">📂</span>
+        <span style="font-weight: 600; font-size: 14px; color: var(--primary);">Chọn file cấu hình</span>
+        <span id="fileNameDisplay" class="muted" style="margin-top: 4px;">Chưa chọn file nào</span>
+      </label>
+      <input type="file" id="configFile" name="configFile" onchange="displayFileName()" />
+      <div class="row"><button type="submit" onclick="uploadConfig(event)">Tải lên & Kiểm tra</button></div>
     </form>
+    <div id="uploadStatus" class="muted" style="margin-top: 10px;"></div>
   </div>
 
   <div class="card">
-    <h3>Preview cấu hình</h3>
-    <div id="preview">Chưa có file hợp lệ được upload.</div>
+    <h3>Xem trước & Áp dụng</h3>
+    <div id="preview" class="muted">Chưa có file cấu hình hợp lệ được tải lên.</div>
 
-    <label>Setup PIN</label>
-    <input id="pin" type="password" placeholder="Nhập PIN để Apply" />
-    <button id="applyBtn" onclick="applyConfig()" disabled>Apply cấu hình</button>
-    <pre id="applyResult"></pre>
+    <label>Mã PIN xác thực</label>
+    <input id="pin" type="password" placeholder="Nhập mã PIN xác nhận" />
+    <span class="muted" style="display: block; margin-top: 4px; font-size: 12px;">💡 Nếu chưa từng đổi PIN, mã mặc định là <code>123456</code></span>
+    <div class="row">
+      <button id="applyBtn" onclick="applyConfig()" disabled>Áp dụng cấu hình mới</button>
+    </div>
+    <pre id="applyResult" style="display: none;"></pre>
   </div>
 
   <div class="card">
-    <h3>Đổi Setup PIN</h3>
-    <label>PIN cũ</label>
-    <input id="oldPin" type="password" placeholder="PIN cũ" />
-    <label>PIN mới</label>
-    <input id="newPin" type="password" placeholder="6-12 chữ số" />
-    <button onclick="changePin()">Đổi PIN</button>
-    <pre id="pinResult"></pre>
+    <h3>Thay đổi mã PIN thiết bị</h3>
+    <label>Mã PIN cũ</label>
+    <input id="oldPin" type="password" placeholder="Nhập PIN hiện tại" />
+    <label>Mã PIN mới</label>
+    <input id="newPin" type="password" placeholder="Độ dài từ 6 - 12 chữ số" />
+    <div class="row">
+      <button onclick="changePin()">Cập nhật mã PIN</button>
+    </div>
+    <pre id="pinResult" style="display: none;"></pre>
   </div>
 
 <script>
@@ -1504,6 +1706,18 @@ function escHtml(s) {
   });
 }
 
+function displayFileName() {
+  const fileInput = document.getElementById('configFile');
+  const display = document.getElementById('fileNameDisplay');
+  if (fileInput.files.length) {
+    display.innerText = fileInput.files[0].name;
+    display.style.color = '#cbd5e1';
+  } else {
+    display.innerText = 'Chưa chọn file nào';
+    display.style.color = 'var(--text-muted)';
+  }
+}
+
 async function refreshStatus() {
   try {
     const r = await fetch('/api/status');
@@ -1511,64 +1725,174 @@ async function refreshStatus() {
 
     document.getElementById('machineCode').innerText = d.machineCode || '-';
     document.getElementById('deviceId').innerText = d.deviceId || '-';
-    document.getElementById('activeConfig').innerText = d.activeConfigId ? (d.activeConfigId + ' / v' + d.activeConfigVersion) : '-';
-    document.getElementById('wifi').innerText = d.wifiConnected ? ('Đã kết nối: ' + (d.wifiIp || '')) : 'Chưa kết nối';
-    document.getElementById('ap').innerText = d.apEnabled ? ('Bật: ' + (d.apIp || '')) : 'Tắt';
-    document.getElementById('time').innerText = d.timeSynced ? ('Đã đồng bộ: ' + d.epoch) : 'Chưa đồng bộ';
-    document.getElementById('mqtt').innerText = d.serverConnected ? 'Đã kết nối' : 'Chưa kết nối';
-    document.getElementById('mode').innerText = d.mode || '-';
+    
+    let activeText = '-';
+    if (d.activeConfigId) {
+      const shortId = d.activeConfigId.length > 20 ? d.activeConfigId.substring(0, 16) + '...' : d.activeConfigId;
+      activeText = shortId + ' (v' + d.activeConfigVersion + ')';
+    }
+    document.getElementById('activeConfig').innerHTML = activeText;
+    
+    document.getElementById('wifi').innerText = d.wifiConnected ? ('Đã kết nối (' + (d.wifiIp || '') + ')') : 'Chưa kết nối';
+    document.getElementById('ap').innerText = d.apEnabled ? ('Bật (' + (d.apIp || '') + ')') : 'Tắt';
+    document.getElementById('time').innerText = d.timeSynced ? 'Đã đồng bộ' : 'Chưa đồng bộ';
+    document.getElementById('mqtt').innerText = d.serverConnected ? 'Đã kết nối máy chủ' : 'Chưa kết nối';
+    document.getElementById('mode').innerText = d.mode === 'feeding' ? 'Đang nhả thức ăn' : (d.mode === 'idle' ? 'Đang chờ' : (d.mode || '-'));
 
     if (d.pending && d.pending.valid) {
       document.getElementById('applyBtn').disabled = false;
-      let warning = d.pending.expiryWarning ? '<div class="warn">Cảnh báo: Máy chưa đồng bộ thời gian nên chưa xác thực được hạn dùng file config.</div>' : '';
+      let warning = d.pending.expiryWarning ? '<div class="warn" style="margin-bottom:10px;">Cảnh báo: Máy chưa đồng bộ thời gian nên chưa xác thực được hạn dùng.</div>' : '';
+      
+      const pConfigId = d.pending.configId || '';
+      const displayConfigId = pConfigId.length > 20 ? pConfigId.substring(0, 16) + '...' : pConfigId;
+      
       document.getElementById('preview').innerHTML =
-        '<div class="ok">Trạng thái file: Hợp lệ ✅</div>' + warning +
-        '<div class="line"><span>Mã máy</span><b>' + escHtml(d.pending.machineCode) + '</b></div>' +
-        '<div class="line"><span>Device ID</span><b>' + escHtml(d.pending.deviceId) + '</b></div>' +
-        '<div class="line"><span>Config ID</span><b>' + escHtml(d.pending.configId) + '</b></div>' +
-        '<div class="line"><span>Config Version</span><b>' + escHtml(d.pending.configVersion) + '</b></div>' +
-        '<div class="line"><span>Issued At</span><b>' + escHtml(d.pending.issuedAt) + '</b></div>' +
-        '<div class="line"><span>Expires At</span><b>' + escHtml(d.pending.expiresAt) + '</b></div>' +
-        '<div class="line"><span>Wi-Fi SSID</span><b>' + escHtml(d.pending.wifiSsid) + '</b></div>' +
+        '<div class="ok" style="margin-bottom: 12px;">File hợp lệ ✅</div>' + warning +
+        '<div class="line"><span>Thiết bị</span><b>' + escHtml(d.pending.deviceId) + '</b></div>' +
+        '<div class="line"><span>Mã cấu hình (Config ID)</span><b><span class="ellipsis" title="' + escHtml(pConfigId) + '">' + escHtml(displayConfigId) + '</span> <span class="badge">v' + d.pending.configVersion + '</span></b></div>' +
+        '<div class="line"><span>Mạng Wi-Fi sẽ kết nối</span><b>' + escHtml(d.pending.wifiSsid) + '</b></div>' +
         '<div class="line"><span>Lịch cho ăn</span><b>' + escHtml(d.pending.scheduleText) + '</b></div>' +
-        '<div class="line"><span>MQTT TLS</span><b>' + (d.pending.mqttUseTls ? 'Có' : 'Không') + '</b></div>' +
-        '<div class="line"><span>Keep setup AP</span><b>' + (d.pending.keepSetupApEnabled ? 'Có' : 'Không') + '</b></div>' +
         '<div class="line"><span>Cung cấp bởi</span><b>' + escHtml(d.pending.provider) + '</b></div>';
     } else if (d.pending && d.pending.error) {
       document.getElementById('applyBtn').disabled = true;
       document.getElementById('preview').innerHTML =
-        '<div class="bad">Trạng thái file: Không hợp lệ ❌</div>' +
-        '<div class="muted">' + escHtml(d.pending.error) + '</div>';
+        '<div class="bad">File không hợp lệ ❌</div>' +
+        '<div class="muted" style="margin-top: 8px;">Chi tiết lỗi: ' + escHtml(d.pending.error) + '</div>';
     } else {
       document.getElementById('applyBtn').disabled = true;
+      document.getElementById('preview').innerHTML = 'Chưa có file cấu hình hợp lệ được tải lên.';
     }
   } catch (e) {}
 }
 
+async function uploadConfig(event) {
+  event.preventDefault();
+  const fileInput = document.getElementById('configFile');
+  const statusDiv = document.getElementById('uploadStatus');
+  
+  if (!fileInput.files.length) {
+    statusDiv.innerHTML = '<span class="bad">Vui lòng chọn file cấu hình trước.</span>';
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('configFile', fileInput.files[0]);
+  
+  statusDiv.innerHTML = 'Đang tải lên...';
+  try {
+    const response = await fetch('/upload', {
+      method: 'POST',
+      body: formData
+    });
+    
+    const result = await response.json();
+    if (response.ok) {
+      statusDiv.innerHTML = '<span class="ok">Tải lên thành công!</span>';
+      await refreshStatus();
+    } else {
+      const errMsg = (result.error && result.error.message) ? result.error.message : 'File không đúng định dạng';
+      statusDiv.innerHTML = '<span class="bad">Xác thực thất bại: ' + escHtml(errMsg) + '</span>';
+      await refreshStatus();
+    }
+  } catch (err) {
+    statusDiv.innerHTML = '<span class="bad">Lỗi truyền tải: ' + escHtml(err.message) + '</span>';
+  }
+}
+
+let pollInterval = null;
 async function applyConfig() {
-  document.getElementById('applyResult').innerText = 'Đang apply...';
+  const resultPre = document.getElementById('applyResult');
+  resultPre.style.display = 'block';
+  resultPre.innerHTML = '<span class="warn">Đang gửi yêu cầu áp dụng cấu hình...</span>';
+  
   const pin = document.getElementById('pin').value;
-  const r = await fetch('/api/config/apply', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({pin})
-  });
-  const d = await r.json();
-  document.getElementById('applyResult').innerText = JSON.stringify(d, null, 2);
-  await refreshStatus();
+  try {
+    const r = await fetch('/api/config/apply', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({pin})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      resultPre.innerHTML = '<span class="warn">Yêu cầu đã được tiếp nhận. Đang tiến hành áp dụng và kiểm tra ngầm (vui lòng chờ)...</span>';
+      pollApplyStatus();
+    } else {
+      const errMsg = (d.error && d.error.message) ? d.error.message : 'Có lỗi xảy ra';
+      resultPre.innerHTML = '<span class="bad">Thất bại: ' + escHtml(errMsg) + '</span>';
+    }
+  } catch (err) {
+    resultPre.innerHTML = '<span class="bad">Lỗi gửi yêu cầu: ' + escHtml(err.message) + '</span>';
+  }
+}
+
+function pollApplyStatus() {
+  if (pollInterval) clearInterval(pollInterval);
+  let attempts = 0;
+  
+  pollInterval = setInterval(async () => {
+    attempts++;
+    const resultPre = document.getElementById('applyResult');
+    try {
+      const r = await fetch('/api/status');
+      const d = await r.json();
+      
+      const statusMap = {
+        0: 'Đang chờ',
+        1: 'Khởi động kiểm tra...',
+        2: 'Đang kết nối thử Wi-Fi...',
+        3: 'Đang đồng bộ thời gian...',
+        4: 'Đang kết nối thử máy chủ...',
+        5: 'Thành công',
+        6: 'Thất bại'
+      };
+      
+      const statusText = statusMap[d.applyStatus] || 'Đang xử lý...';
+      
+      if (d.applyStatus === 5) {
+        clearInterval(pollInterval);
+        resultPre.innerHTML = '<span class="ok">Áp dụng cấu hình mới thành công! Thiết bị đã ngắt điểm phát cài đặt.</span>';
+        await refreshStatus();
+      } else if (d.applyStatus === 6) {
+        clearInterval(pollInterval);
+        resultPre.innerHTML = '<span class="bad">Áp dụng cấu hình thất bại: ' + escHtml(d.applyErrorMessage || d.applyErrorCode) + '</span>';
+        await refreshStatus();
+      } else {
+        resultPre.innerHTML = '<span class="warn">Trạng thái: ' + statusText + ' (Đang kiểm tra)...</span>';
+      }
+    } catch (err) {
+      if (attempts > 5) {
+        clearInterval(pollInterval);
+        resultPre.innerHTML = '<span class="ok">Thiết bị đã kết nối thành công và tắt điểm phát cài đặt. Vui lòng kết nối lại Wi-Fi nhà để sử dụng thiết bị.</span>';
+      } else {
+        resultPre.innerHTML = '<span class="warn">Đang kết nối lại với thiết bị... (' + attempts + ')</span>';
+      }
+    }
+  }, 2000);
 }
 
 async function changePin() {
-  document.getElementById('pinResult').innerText = 'Đang đổi PIN...';
+  const resultPre = document.getElementById('pinResult');
+  resultPre.style.display = 'block';
+  resultPre.innerText = 'Đang cập nhật mã PIN...';
+  
   const oldPin = document.getElementById('oldPin').value;
   const newPin = document.getElementById('newPin').value;
-  const r = await fetch('/api/setup-pin/change', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({oldPin, newPin})
-  });
-  const d = await r.json();
-  document.getElementById('pinResult').innerText = JSON.stringify(d, null, 2);
+  try {
+    const r = await fetch('/api/setup-pin/change', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({oldPin, newPin})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      resultPre.innerHTML = '<span class="ok">Đổi mã PIN thành công!</span>';
+    } else {
+      const errMsg = (d.error && d.error.message) ? d.error.message : 'Đổi PIN thất bại';
+      resultPre.innerHTML = '<span class="bad">Lỗi: ' + escHtml(errMsg) + '</span>';
+    }
+  } catch (err) {
+    resultPre.innerHTML = '<span class="bad">Lỗi kết nối: ' + escHtml(err.message) + '</span>';
+  }
 }
 
 refreshStatus();
@@ -1577,9 +1901,6 @@ setInterval(refreshStatus, 3000);
 </body>
 </html>
 )HTML";
-
-  return html;
-}
 
 // ================= JSON RESPONSE HELPERS =================
 void sendJson(JsonDocument &doc, int code = 200) {
@@ -1599,7 +1920,7 @@ void sendError(int httpCode, const String &code, const String &message) {
 
 // ================= HTTP HANDLERS =================
 void handleRoot() {
-  server.send(200, "text/html; charset=utf-8", htmlPage());
+  server.send_P(200, "text/html; charset=utf-8", HTML_PAGE);
 }
 
 void handlePing() {
@@ -1653,6 +1974,10 @@ void handleStatus() {
   } else if (previewErrorCode.length() > 0) {
     pending["error"] = previewErrorCode + ": " + previewErrorMessage;
   }
+
+  doc["applyStatus"] = (int)applyStatus;
+  doc["applyErrorCode"] = applyErrorCode;
+  doc["applyErrorMessage"] = applyErrorMessage;
 
   sendJson(doc);
 }
@@ -1721,23 +2046,14 @@ void handleUploadDone() {
     return;
   }
 
-  String html = "<!doctype html><html><head><meta name='viewport' content='width=device-width, initial-scale=1' />";
-  html += "<meta http-equiv='refresh' content='1; url=/' />";
-  html += "<title>Upload</title></head><body style='font-family:Arial;max-width:720px;margin:20px auto;padding:12px;'>";
+  DynamicJsonDocument doc(256);
+  doc["ok"] = hasPreviewConfig;
   if (hasPreviewConfig) {
-    html += "<h3 style='color:#10893e'>Upload thành công. File hợp lệ.</h3>";
-    if (previewExpiryWarning) {
-      html += "<p style='color:#b36b00'>Cảnh báo: Máy chưa đồng bộ thời gian nên chưa xác thực được hạn dùng file.</p>";
-    }
-    html += "<p>Đang quay lại trang preview...</p>";
+    doc["previewExpiryWarning"] = previewExpiryWarning;
+    sendJson(doc, 200);
   } else {
-    html += "<h3 style='color:#d13438'>Upload không hợp lệ.</h3>";
-    html += "<p>" + esc(previewErrorCode + ": " + previewErrorMessage) + "</p>";
-    html += "<p>Đang quay lại trang upload...</p>";
+    sendError(400, previewErrorCode, previewErrorMessage);
   }
-  html += "<p><a href='/'>Quay lại ngay</a></p></body></html>";
-
-  server.send(200, "text/html; charset=utf-8", html);
 }
 
 void handleApplyConfig() {
@@ -1772,81 +2088,16 @@ void handleApplyConfig() {
 
   publishEvent("config_apply_started", "local_setup", "", 0);
 
-  String testErrorCode, testErrorMessage;
-  bool testOk = testWifiTimeMqtt(previewConfig, testErrorCode, testErrorMessage);
+  // Đổi sang trạng thái bắt đầu nạp ngầm
+  applyStatus = APPLY_STARTING;
+  applyErrorCode = "";
+  applyErrorMessage = "";
 
-  if (!testOk) {
-    deleteFileIfExists(CONFIG_PENDING_PATH);
-
-    // Try reconnect old active if exists.
-    if (hasActiveConfig) {
-      connectWiFiWithConfig(activeConfig, WIFI_CONNECT_TIMEOUT_MS);
-      syncTimeWithConfig(activeConfig, true);
-      connectMqttWithConfig(activeConfig, true);
-    }
-
-    enableSetupAp(false);
-
-    DynamicJsonDocument res(768);
-    res["ok"] = false;
-    res["savePending"] = true;
-    res["wifiConnected"] = (testErrorCode != "wifi_connect_failed");
-    res["timeSynced"] = timeSynced;
-    res["serverConnected"] = false;
-    res["promoted"] = false;
-
-    JsonObject e = res.createNestedObject("error");
-    e["code"] = testErrorCode;
-    e["message"] = testErrorMessage;
-
-    sendJson(res, 400);
-    return;
-  }
-
-  bool promoted = promotePendingToActive();
-
-  if (!promoted) {
-    sendError(500, "promote_config_failed", "Không promote được pending config thành active.");
-    return;
-  }
-
-  hasPreviewConfig = false;
-  previewErrorCode = "";
-  previewErrorMessage = "";
-  previewExpiryWarning = false;
-
-  // Reconnect using active config and publish online/state.
-  if (mqttClient->connected()) mqttClient->disconnect();
-  WiFi.disconnect();
-
-  bool wifiOk = connectWiFiWithConfig(activeConfig, WIFI_CONNECT_TIMEOUT_MS);
-  syncTimeWithConfig(activeConfig, true);
-  bool mqttOk = connectMqttWithConfig(activeConfig, true);
-
-  if (mqttOk) {
-    publishOnline(true);
-    publishState();
-    publishTelemetry();
-    publishEvent("config_applied", "local_setup", "", 0);
-  }
-
-  if (wifiOk && !activeConfig.keepSetupApEnabled) {
-    disableSetupApIfAllowed();
-  } else {
-    enableSetupAp(false);
-  }
-
-  DynamicJsonDocument res(768);
+  DynamicJsonDocument res(256);
   res["ok"] = true;
-  res["savePending"] = true;
-  res["wifiConnected"] = wifiOk;
-  res["timeSynced"] = timeSynced;
-  res["serverConnected"] = mqttOk;
-  res["promoted"] = true;
-  res["activeConfigId"] = activeConfig.configId;
-  res["activeConfigVersion"] = activeConfig.configVersion;
-
-  sendJson(res);
+  res["status"] = "starting";
+  res["message"] = "Yêu cầu đã tiếp nhận. Thiết bị đang tiến hành kiểm tra ngầm...";
+  sendJson(res, 200);
 }
 
 void handleChangePin() {
@@ -1979,7 +2230,13 @@ void setup() {
   applyDoorState(false);
 
   if (!LittleFS.begin()) {
-    Serial.println("[FS] LittleFS mount FAILED");
+    Serial.println("[FS] LittleFS mount FAILED. Formatting...");
+    LittleFS.format();
+    if (!LittleFS.begin()) {
+      Serial.println("[FS] LittleFS mount FAILED after format");
+    } else {
+      Serial.println("[FS] LittleFS formatted and mounted successfully");
+    }
   }
 
   loadSetupPin();
@@ -2015,7 +2272,124 @@ void setup() {
   connectActiveServices();
 }
 
+void updateApplyTask() {
+  if (applyStatus == APPLY_IDLE || applyStatus == APPLY_SUCCESS || applyStatus == APPLY_FAILED) return;
+
+  if (applyStatus == APPLY_STARTING) {
+    Serial.println("[APPLY] Starting background apply task...");
+    applyStatus = APPLY_TESTING_WIFI;
+    
+    if (mqttClient->connected()) mqttClient->disconnect();
+    WiFi.disconnect();
+    
+    bool wifiOk = connectWiFiWithConfig(previewConfig, WIFI_CONNECT_TIMEOUT_MS);
+    if (!wifiOk) {
+      Serial.println("[APPLY] WiFi connection failed!");
+      applyStatus = APPLY_FAILED;
+      applyErrorCode = "wifi_connect_failed";
+      applyErrorMessage = "Không kết nối được Wi-Fi.";
+      
+      // Rollback
+      deleteFileIfExists(CONFIG_PENDING_PATH);
+      if (hasActiveConfig) {
+        connectWiFiWithConfig(activeConfig, WIFI_CONNECT_TIMEOUT_MS);
+        syncTimeWithConfig(activeConfig, true);
+        connectMqttWithConfig(activeConfig, true);
+      }
+      enableSetupAp(false);
+      return;
+    }
+    
+    Serial.println("[APPLY] WiFi test OK. Syncing time...");
+    applyStatus = APPLY_TESTING_TIME;
+    syncTimeWithConfig(previewConfig, true);
+    
+    if (isTimeValid() && previewConfig.expiresAt > 0 && nowEpoch() > previewConfig.expiresAt) {
+      Serial.println("[APPLY] Config expired!");
+      applyStatus = APPLY_FAILED;
+      applyErrorCode = "config_expired";
+      applyErrorMessage = "File cấu hình đã hết hạn sau khi đồng bộ thời gian.";
+      
+      // Rollback
+      deleteFileIfExists(CONFIG_PENDING_PATH);
+      if (hasActiveConfig) {
+        connectWiFiWithConfig(activeConfig, WIFI_CONNECT_TIMEOUT_MS);
+        syncTimeWithConfig(activeConfig, true);
+        connectMqttWithConfig(activeConfig, true);
+      }
+      enableSetupAp(false);
+      return;
+    }
+    
+    Serial.println("[APPLY] Time test OK. Testing MQTT...");
+    applyStatus = APPLY_TESTING_MQTT;
+    bool mqttOk = connectMqttWithConfig(previewConfig, false);
+    if (!mqttOk) {
+      Serial.println("[APPLY] MQTT connection failed!");
+      applyStatus = APPLY_FAILED;
+      applyErrorCode = "mqtt_connect_failed";
+      applyErrorMessage = "Không kết nối được MQTT Server.";
+      
+      // Rollback
+      deleteFileIfExists(CONFIG_PENDING_PATH);
+      if (hasActiveConfig) {
+        connectWiFiWithConfig(activeConfig, WIFI_CONNECT_TIMEOUT_MS);
+        syncTimeWithConfig(activeConfig, true);
+        connectMqttWithConfig(activeConfig, true);
+      }
+      enableSetupAp(false);
+      return;
+    }
+    
+    Serial.println("[APPLY] MQTT test OK. Promoting config...");
+    if (mqttClient->connected()) mqttClient->disconnect();
+    
+    bool promoted = promotePendingToActive();
+    if (!promoted) {
+      Serial.println("[APPLY] Promote config failed!");
+      applyStatus = APPLY_FAILED;
+      applyErrorCode = "promote_failed";
+      applyErrorMessage = "Không áp dụng được cấu hình mới.";
+      
+      // Rollback
+      deleteFileIfExists(CONFIG_PENDING_PATH);
+      if (hasActiveConfig) {
+        connectWiFiWithConfig(activeConfig, WIFI_CONNECT_TIMEOUT_MS);
+        syncTimeWithConfig(activeConfig, true);
+        connectMqttWithConfig(activeConfig, true);
+      }
+      enableSetupAp(false);
+      return;
+    }
+    
+    applyStatus = APPLY_SUCCESS;
+    hasPreviewConfig = false;
+    previewErrorCode = "";
+    previewErrorMessage = "";
+    previewExpiryWarning = false;
+    
+    WiFi.disconnect();
+    bool finalWifi = connectWiFiWithConfig(activeConfig, WIFI_CONNECT_TIMEOUT_MS);
+    syncTimeWithConfig(activeConfig, true);
+    bool finalMqtt = connectMqttWithConfig(activeConfig, true);
+    
+    if (finalMqtt) {
+      publishOnline(true);
+      publishState();
+      publishTelemetry();
+      publishEvent("config_applied", "local_setup", "", 0);
+    }
+    
+    if (finalWifi && !activeConfig.keepSetupApEnabled) {
+      disableSetupApIfAllowed();
+    } else {
+      enableSetupAp(false);
+    }
+  }
+}
+
 void loop() {
+  updateApplyTask();
   server.handleClient();
   handleSetupButton();
   updateTempAp();
