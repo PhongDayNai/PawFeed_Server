@@ -39,13 +39,35 @@ export async function getLastChatMessage(userId) {
 }
 
 /**
- * Retrieves the chat history for a specific session of a user, sorted chronologically
+ * Retrieves the chat history for a specific session of a user, sorted chronologically.
+ * Supports sliding window limit.
  * @param {number} userId
  * @param {string} sessionId
+ * @param {number|null} [limit=null] Optional limit for sliding window
  * @returns {Promise<Array>} List of chat messages in the session
  */
-export async function getSessionChatHistory(userId, sessionId) {
+export async function getSessionChatHistory(userId, sessionId, limit = null) {
   const pool = getPool();
+  
+  if (limit !== null && limit !== undefined) {
+    const parsedLimit = Number.parseInt(limit, 10);
+    const [rows] = await pool.execute(
+      `SELECT role, content FROM (
+         SELECT id, role, content
+         FROM chatbot_messages
+         WHERE user_id = ? AND session_id = ?
+         ORDER BY id DESC
+         LIMIT ${parsedLimit}
+       ) sub
+       ORDER BY id ASC`,
+      [userId, sessionId]
+    );
+    return rows.map((r) => ({
+      role: r.role,
+      content: r.content
+    }));
+  }
+
   const [rows] = await pool.execute(
     `SELECT role, content
      FROM chatbot_messages

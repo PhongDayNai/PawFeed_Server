@@ -43,14 +43,22 @@ export const CHATBOT_GREETINGS = [
  * Resolves the active session ID for a user.
  * If elapsed time exceeds timeout, but the session has only the chatbot greeting message,
  * we still reuse the session instead of starting a new one.
+ * If the session exceeds the maximum number of messages, we force a new session.
  * @param {number} userId
  * @param {Object|null} lastMessage Last chat message
  * @param {number} timeoutSec Session timeout in seconds
+ * @param {number} [maxMessages=20] Max messages allowed in a single session
  * @returns {Promise<string|null>} Active session ID or null
  */
-async function resolveActiveSessionId(userId, lastMessage, timeoutSec) {
+async function resolveActiveSessionId(userId, lastMessage, timeoutSec, maxMessages = 20) {
   if (!lastMessage || !lastMessage.created_at) {
     return null;
+  }
+
+  // Retrieve full history for session to check limit
+  const sessionHistory = await getSessionChatHistory(userId, lastMessage.session_id);
+  if (sessionHistory.length >= maxMessages) {
+    return null; // Force new session if it exceeds maxMessages limit
   }
 
   const elapsedSec = (Date.now() - new Date(lastMessage.created_at).getTime()) / 1000;
@@ -59,7 +67,6 @@ async function resolveActiveSessionId(userId, lastMessage, timeoutSec) {
   }
 
   // Check if the only message in the last session is a chatbot greeting
-  const sessionHistory = await getSessionChatHistory(userId, lastMessage.session_id);
   if (sessionHistory.length === 1) {
     const oldestMessage = sessionHistory[0];
     const isGreeting = oldestMessage &&
@@ -217,7 +224,8 @@ export async function askChatbot(req, res) {
   }
 
   // 4. Retrieve session-only chat history from DB to build the context for the AI
-  const sessionHistory = await getSessionChatHistory(userId, sessionId);
+  // Use sliding window limit of 10 messages to avoid excessively long contexts
+  const sessionHistory = await getSessionChatHistory(userId, sessionId, 10);
 
   // Retrieve user memories from DB
   const userMemories = await getUserMemories(userId);
