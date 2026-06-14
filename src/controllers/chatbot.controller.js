@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { env } from '../config/env.js';
 import { getChatCompletion, resolveModelName, CHATBOT_TOOLS } from '../services/ai.service.js';
-import { saveChatMessage, getUserChatHistory, getLastChatMessage, getSessionChatHistory } from '../services/chatbot.service.js';
+import { saveChatMessage, getUserChatHistory, getLastChatMessage, getSessionChatHistory, findMatchingWikiEntries } from '../services/chatbot.service.js';
 import { sendSuccess } from '../utils/response.js';
 
 export const NOMI_SYSTEM_PROMPT = `You are Nomi, a warm, friendly, and highly knowledgeable pet care assistant for the PawFeed automatic pet feeder application.
@@ -65,10 +65,18 @@ export async function askChatbot(req, res) {
   // 4. Retrieve session-only chat history from DB to build the context for the AI
   const sessionHistory = await getSessionChatHistory(userId, sessionId);
 
+  // Search wiki for matching entries based on user's query
+  const matchingWiki = await findMatchingWikiEntries(userMessage);
+  let systemPromptContent = NOMI_SYSTEM_PROMPT;
+  if (matchingWiki && matchingWiki.length > 0) {
+    const wikiContext = matchingWiki.map(item => `[WIKI] ${item.keyword}: ${item.content}`).join('\n\n');
+    systemPromptContent += `\n\nUse the following verified wiki/dictionary entries to answer the user's question accurately. Prioritize this information and do not make up facts:\n${wikiContext}`;
+  }
+
   // Inject Nomi's system prompt at the beginning of the messages list
   const systemPromptMessage = {
     role: 'system',
-    content: NOMI_SYSTEM_PROMPT
+    content: systemPromptContent
   };
   const filteredHistory = sessionHistory.filter(m => m.role !== 'system');
   const messagesToSend = [systemPromptMessage, ...filteredHistory];
