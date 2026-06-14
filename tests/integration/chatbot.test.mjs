@@ -86,6 +86,22 @@ describe('Chatbot API Integration Tests', () => {
         if (Number(id) === 99) return [[mockAdminUser]];
         return [[mockUser]];
       }
+      if (normalizedSql.includes('FROM devices') || normalizedSql.includes('FROM devices d')) {
+        const deviceId = params[0];
+        const userId = params[1];
+        if (deviceId === 'feeder001') {
+          return [[{
+            id: 1,
+            device_id: 'feeder001',
+            machine_code: 'PF-ESP8266-001',
+            display_name: 'Feeder Bơ',
+            owner_user_id: userId,
+            status: 'linked',
+            online: 1
+          }]];
+        }
+        return [[]];
+      }
       if (normalizedSql.includes('INSERT INTO chatbot_messages')) {
         mockChatMessages.push({
           id: mockChatMessages.length + 1,

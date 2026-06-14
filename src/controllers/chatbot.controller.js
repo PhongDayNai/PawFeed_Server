@@ -87,10 +87,25 @@ async function resolveActiveSessionId(userId, lastMessage, timeoutSec, maxMessag
  * @param {Object} args
  * @returns {string|null} Error message or null if valid
  */
-function validateInteractiveToolArgs(functionName, args) {
+/**
+ * Validates the arguments of interactive tool calls.
+ * Returns null if valid, or a string describing the validation error if invalid.
+ * @param {string} functionName
+ * @param {Object} args
+ * @param {number} userId
+ * @returns {Promise<string|null>} Error message or null if valid
+ */
+async function validateInteractiveToolArgs(functionName, args, userId) {
   const deviceId = args.deviceId;
   if (!deviceId || typeof deviceId !== 'string' || deviceId.trim() === '') {
     return "Missing or invalid deviceId. You must call getUserDevicesList first to retrieve the user's registered devices and select the correct deviceId. Do not guess or assume a deviceId.";
+  }
+
+  // Validate deviceId in database
+  try {
+    await getUserDevice(deviceId, userId);
+  } catch (err) {
+    return `Device with ID '${deviceId}' does not exist or is not registered to your account. You must call getUserDevicesList to get the list of your registered devices and use their correct deviceId. The deviceId is a technical unique identifier (e.g. 'feeder001'), NOT the pet's display name or nickname.`;
   }
 
   if (functionName === 'proposeFeedNow') {
@@ -163,6 +178,7 @@ export const NOMI_SYSTEM_PROMPT_SUFFIX = `Strict constraints you must follow:
 - ACTION TOOL CALLING CONSTRAINT: When the user asks you to feed the pet now (e.g. "cho ăn ngay", "cho ăn đi", "cho ăn liền", "feed now") or schedule a feeding (e.g. "lên lịch cho ăn", "thêm lịch ăn", "set schedule"), you MUST propose this action using the corresponding interactive tool ("proposeFeedNow" or "proposeSaveSchedule").
   - You MUST NOT just reply with text instructing the user to configure it themselves on the interface (e.g. do NOT say "Bạn hãy tự thiết lập lịch ăn..."). You MUST call the tool so that a confirmation dialog is triggered on the client's screen.
   - If you do not have the deviceId of the user's device yet, you MUST call "getUserDevicesList" first to retrieve it. If the user has only one registered device, use its deviceId automatically. If they have multiple, ask them to clarify which device they want to use.
+  - DEVICE ID STRICT CONSTRAINT: You MUST NEVER use a pet's display name (e.g., "Bơ", "Milo") or nickname as the deviceId argument in proposeFeedNow or proposeSaveSchedule. The deviceId MUST be a technical identifier (e.g., "feeder001") retrieved by calling "getUserDevicesList". You MUST verify the deviceId carefully before executing any interactive tool calls. Using a pet's name as deviceId is strictly prohibited.
 - FEED CONTROL & SCHEDULING CONSTRAINTS:
   - If the user explicitly requests feeding or scheduling by specifying a duration in seconds (e.g., "cho ăn 2 giây", "mở cửa 1.5 giây", "lên lịch 1.2 seconds"), you MUST convert the duration to milliseconds (seconds * 1000) and call the corresponding tool (proposeFeedNow or proposeSaveSchedule) directly with this openDurationMs. Do NOT ask for the food weight in grams, kibble shape, or kibble size in this case. Asking for grams or refusing when a duration is given is strictly forbidden.
   - If the user requests feeding or scheduling by specifying food weight in grams (e.g., "50g", "60 grams") but does NOT specify a duration, you MUST first run the calculateMotorRunTime tool to calculate the duration (recommendedTimeSeconds). After receiving the tool's output, you MUST propose the action (proposeFeedNow or proposeSaveSchedule) using the calculated recommendedTimeSeconds converted to milliseconds (recommendedTimeSeconds * 1000) as the openDurationMs. Do NOT call proposeFeedNow or proposeSaveSchedule directly with grams or incorrect arguments.
@@ -344,18 +360,19 @@ export async function askChatbot(req, res) {
 
       let hasInvalidInteractiveTool = false;
       if (hasInteractiveTool) {
-        hasInvalidInteractiveTool = aiResponse.tool_calls.some(tc => {
+        const results = await Promise.all(aiResponse.tool_calls.map(async (tc) => {
           if (tc.function.name === 'proposeFeedNow' || tc.function.name === 'proposeSaveSchedule') {
             try {
               const args = JSON.parse(tc.function.arguments || '{}');
-              const error = validateInteractiveToolArgs(tc.function.name, args);
+              const error = await validateInteractiveToolArgs(tc.function.name, args, userId);
               return error !== null;
             } catch (e) {
               return true;
             }
           }
           return false;
-        });
+        }));
+        hasInvalidInteractiveTool = results.some(r => r === true);
       }
 
       if (hasInteractiveTool && !hasInvalidInteractiveTool) {
@@ -378,7 +395,7 @@ export async function askChatbot(req, res) {
         let toolResult;
         try {
           if (functionName === 'proposeFeedNow' || functionName === 'proposeSaveSchedule') {
-            const error = validateInteractiveToolArgs(functionName, functionArgs);
+            const error = await validateInteractiveToolArgs(functionName, functionArgs, userId);
             if (error) {
               toolResult = { error };
             } else {
@@ -433,18 +450,19 @@ export async function askChatbot(req, res) {
   if (currentResponse?.content || (currentResponse?.tool_calls && currentResponse.tool_calls.length > 0)) {
     // Sanitize tool_calls before saving and sending to client (remove invalid interactive tools)
     if (currentResponse.tool_calls && currentResponse.tool_calls.length > 0) {
-      const hasInvalidInteractiveTool = currentResponse.tool_calls.some(tc => {
+      const results = await Promise.all(currentResponse.tool_calls.map(async (tc) => {
         if (tc.function.name === 'proposeFeedNow' || tc.function.name === 'proposeSaveSchedule') {
           try {
             const args = JSON.parse(tc.function.arguments || '{}');
-            const error = validateInteractiveToolArgs(tc.function.name, args);
+            const error = await validateInteractiveToolArgs(tc.function.name, args, userId);
             return error !== null;
           } catch (e) {
             return true;
           }
         }
         return false;
-      });
+      }));
+      const hasInvalidInteractiveTool = results.some(r => r === true);
 
       if (hasInvalidInteractiveTool) {
         currentResponse.tool_calls = undefined;
