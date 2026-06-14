@@ -1,7 +1,16 @@
 import crypto from 'node:crypto';
 import { env } from '../config/env.js';
 import { getChatCompletion, resolveModelName, CHATBOT_TOOLS } from '../services/ai.service.js';
-import { saveChatMessage, getUserChatHistory, getLastChatMessage, getSessionChatHistory, findMatchingWikiEntries } from '../services/chatbot.service.js';
+import {
+  saveChatMessage,
+  getUserChatHistory,
+  getLastChatMessage,
+  getSessionChatHistory,
+  findMatchingWikiEntries,
+  getUserMemories,
+  saveUserMemory,
+  deleteUserMemory as deleteUserMemoryService
+} from '../services/chatbot.service.js';
 import { sendSuccess } from '../utils/response.js';
 import { getUserDashboard } from '../services/dashboard.service.js';
 import { listUserDevices, getUserDevice, getUserDeviceStatus } from '../services/device.service.js';
@@ -210,9 +219,31 @@ export async function askChatbot(req, res) {
   // 4. Retrieve session-only chat history from DB to build the context for the AI
   const sessionHistory = await getSessionChatHistory(userId, sessionId);
 
+  // Retrieve user memories from DB
+  const userMemories = await getUserMemories(userId);
+  let memoryText = '';
+  if (userMemories.length > 0) {
+    const grouped = {};
+    userMemories.forEach(m => {
+      if (!grouped[m.entityName]) grouped[m.entityName] = [];
+      grouped[m.entityName].push(`  - ${m.key}: ${m.value}`);
+    });
+
+    memoryText = Object.keys(grouped).map(entity => {
+      const header = entity === 'general' ? '* General preferences:' : `* Pet ${entity}:`;
+      return `${header}\n${grouped[entity].join('\n')}`;
+    }).join('\n\n');
+  }
+
   // Search wiki for matching entries based on user's query
   const matchingWiki = await findMatchingWikiEntries(userMessage);
   let systemPromptContent = NOMI_SYSTEM_PROMPT_PREFIX;
+
+  // Inject User Memory if exists
+  if (memoryText) {
+    systemPromptContent += `\n\n[USER MEMORY - SAVED INFORMATION ABOUT USER & PETS]:\n${memoryText}\n(Use the above information directly to answer user queries or as arguments for calculation tools without asking the user again. Pay close attention to distinguish information of each pet by their name.)`;
+  }
+
   if (matchingWiki && matchingWiki.length > 0) {
     const wikiContext = matchingWiki.map(item => `[WIKI] ${item.keyword}: ${item.content}`).join('\n\n');
     systemPromptContent += `\n\nUse the following verified wiki/dictionary entries to answer the user's question accurately. Prioritize this information and do not make up facts:\n${wikiContext}`;
@@ -283,6 +314,12 @@ export async function askChatbot(req, res) {
             const deviceDetail = await getUserDevice(deviceId, userId);
             const deviceStatus = await getUserDeviceStatus(deviceId, userId);
             toolResult = { device: deviceDetail, status: deviceStatus };
+          } else if (functionName === 'updateUserMemory') {
+            const { entityName, key, value } = functionArgs;
+            toolResult = await saveUserMemory(userId, { entityName, key, value });
+          } else if (functionName === 'deleteUserMemory') {
+            const { entityName, key } = functionArgs;
+            toolResult = await deleteUserMemoryService(userId, { entityName, key });
           } else {
             toolResult = { error: `Tool ${functionName} not implemented` };
           }

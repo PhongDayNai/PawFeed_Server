@@ -409,3 +409,88 @@ export async function deleteWikiEntry(id, context = {}) {
     connection.release();
   }
 }
+
+/**
+ * Normalizes entity name to Capital Case (e.g. 'Milo', 'Bo') or 'general'
+ * @param {string} name
+ * @returns {string}
+ */
+function normalizeEntityName(name) {
+  const trimmed = (name || 'general').trim();
+  if (trimmed.toLowerCase() === 'general') return 'general';
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+}
+
+const ALLOWED_MEMORY_KEYS = ['kibble_description', 'pet_breed', 'pet_weight_kg', 'user_preferences'];
+
+/**
+ * Retrieves all chatbot memories for a user
+ * @param {number} userId
+ * @returns {Promise<Array>} List of user memories
+ */
+export async function getUserMemories(userId) {
+  const pool = getPool();
+  const [rows] = await pool.execute(
+    `SELECT entity_name, memory_key, memory_value
+     FROM chatbot_user_memories
+     WHERE user_id = ?
+     ORDER BY entity_name ASC, memory_key ASC`,
+    [userId]
+  );
+  return rows.map(r => ({
+    entityName: normalizeEntityName(r.entity_name),
+    key: r.memory_key.trim().toLowerCase(),
+    value: r.memory_value
+  }));
+}
+
+/**
+ * Saves or updates a chatbot memory entry for a user
+ * @param {number} userId
+ * @param {Object} params
+ * @param {string} params.entityName
+ * @param {string} params.key
+ * @param {string} params.value
+ * @returns {Promise<Object>} Success status
+ */
+export async function saveUserMemory(userId, { entityName, key, value }) {
+  const pool = getPool();
+  const normalizedEntity = normalizeEntityName(entityName);
+  const normalizedKey = key.trim().toLowerCase();
+
+  if (!ALLOWED_MEMORY_KEYS.includes(normalizedKey)) {
+    throw new Error(`Invalid memory key: ${key}. Allowed keys are: ${ALLOWED_MEMORY_KEYS.join(', ')}`);
+  }
+
+  await pool.execute(
+    `INSERT INTO chatbot_user_memories (user_id, entity_name, memory_key, memory_value, created_at, updated_at)
+     VALUES (?, ?, ?, ?, NOW(), NOW())
+     ON DUPLICATE KEY UPDATE memory_value = ?, updated_at = NOW()`,
+    [userId, normalizedEntity, normalizedKey, value, value]
+  );
+
+  return { success: true };
+}
+
+/**
+ * Deletes a chatbot memory entry for a user
+ * @param {number} userId
+ * @param {Object} params
+ * @param {string} params.entityName
+ * @param {string} params.key
+ * @returns {Promise<Object>} Success status
+ */
+export async function deleteUserMemory(userId, { entityName, key }) {
+  const pool = getPool();
+  const normalizedEntity = normalizeEntityName(entityName);
+  const normalizedKey = key.trim().toLowerCase();
+
+  const [result] = await pool.execute(
+    `DELETE FROM chatbot_user_memories
+     WHERE user_id = ? AND entity_name = ? AND memory_key = ?`,
+    [userId, normalizedEntity, normalizedKey]
+  );
+
+  return { success: true, affectedRows: result.affectedRows };
+}
+

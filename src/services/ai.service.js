@@ -202,6 +202,53 @@ export const CHATBOT_TOOLS = [
         required: ['deviceId', 'entries']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'updateUserMemory',
+      description: 'Save or update a specific piece of information about a pet (e.g. kibble size/shape, weight, breed) or general user preferences. Call this tool whenever the user provides new characteristics about their pets to remember them across session chats.',
+      parameters: {
+        type: 'object',
+        properties: {
+          entityName: {
+            type: 'string',
+            description: 'The name of the target pet (e.g. "Bo", "Milo") or "general" if the information is generic to the user and not pet-specific.'
+          },
+          key: {
+            type: 'string',
+            enum: ['kibble_description', 'pet_breed', 'pet_weight_kg', 'user_preferences'],
+            description: 'The key identifying the kind of information.'
+          },
+          value: {
+            type: 'string',
+            description: 'The details to remember. Keep it concise but complete (e.g. "ngôi sao dẹt, dày 2mm, kích thước 5mm").'
+          }
+        },
+        required: ['entityName', 'key', 'value']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'deleteUserMemory',
+      description: 'Remove/forget a specific memory key for a pet or general user setting when it is no longer correct or requested to be forgotten.',
+      parameters: {
+        type: 'object',
+        properties: {
+          entityName: {
+            type: 'string',
+            description: 'The name of the pet (e.g. "Bo", "Milo") or "general".'
+          },
+          key: {
+            type: 'string',
+            description: 'The memory key to delete.'
+          }
+        },
+        required: ['entityName', 'key']
+      }
+    }
   }
 ];
 

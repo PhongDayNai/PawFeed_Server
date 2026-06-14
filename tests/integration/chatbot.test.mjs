@@ -60,6 +60,7 @@ describe('Chatbot API Integration Tests', () => {
   };
 
   let mockChatMessages = [];
+  let mockUserMemories = [];
   let mockWikiEntries = [
     { id: 1, keyword: 'calibrate', content: 'Calibrate content here', created_at: new Date(), updated_at: new Date() },
     { id: 2, keyword: 'lượng ăn', content: 'Diet plan content here', created_at: new Date(), updated_at: new Date() },
@@ -169,6 +170,37 @@ describe('Chatbot API Integration Tests', () => {
         const id = params[0];
         mockWikiEntries = mockWikiEntries.filter(e => e.id !== Number(id));
         return [[]];
+      }
+      if (normalizedSql.startsWith('SELECT') && normalizedSql.includes('FROM chatbot_user_memories')) {
+        return [mockUserMemories.filter(m => Number(m.user_id) === Number(params[0]))];
+      }
+      if (normalizedSql.includes('INSERT INTO chatbot_user_memories')) {
+        const userId = params[0];
+        const entityName = params[1];
+        const memoryKey = params[2];
+        const memoryValue = params[3];
+        const valueForUpdate = params[4];
+        
+        const existing = mockUserMemories.find(m => Number(m.user_id) === Number(userId) && m.entity_name === entityName && m.memory_key === memoryKey);
+        if (existing) {
+          existing.memory_value = valueForUpdate;
+        } else {
+          mockUserMemories.push({
+            user_id: userId,
+            entity_name: entityName,
+            memory_key: memoryKey,
+            memory_value: memoryValue
+          });
+        }
+        return [{ affectedRows: 1 }];
+      }
+      if (normalizedSql.includes('DELETE FROM chatbot_user_memories')) {
+        const userId = params[0];
+        const entityName = params[1];
+        const memoryKey = params[2];
+        const initialLength = mockUserMemories.length;
+        mockUserMemories = mockUserMemories.filter(m => !(Number(m.user_id) === Number(userId) && m.entity_name === entityName && m.memory_key === memoryKey));
+        return [{ affectedRows: initialLength - mockUserMemories.length }];
       }
       return [[]];
     };
@@ -606,7 +638,7 @@ describe('Chatbot API Integration Tests', () => {
 
     // Verify tools were supplied to AI
     assert.ok(receivedTools);
-    assert.equal(receivedTools.length, 8);
+    assert.equal(receivedTools.length, 10);
     assert.equal(receivedTools[0].function.name, 'calculateMotorRunTime');
     assert.equal(receivedTools[1].function.name, 'calculateFlowRate');
     assert.equal(receivedTools[2].function.name, 'calculateDailyFoodRequirement');
@@ -892,6 +924,344 @@ describe('Chatbot API Integration Tests', () => {
       headers: { Authorization: `Bearer ${adminToken}` }
     });
     assert.equal(resGetDeleted.statusCode, 404);
+  });
+
+  it('POST /v1/chatbot supports Multi-Pet memories via updateUserMemory/deleteUserMemory tools and injects context', async () => {
+    mockUserMemories = []; // Reset memories
+    mockChatMessages = []; // Reset chat messages
+
+    let aiCallCount = 0;
+    let sentSystemPrompt = null;
+
+    axios.post = async (url, data, config) => {
+      aiCallCount++;
+      if (aiCallCount === 1) {
+        // First LLM call: User says Bo is a Corgi and eats star kibbles
+        return {
+          data: {
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: 'Tôi sẽ lưu thông tin của bé Bơ nhé!',
+                  tool_calls: [
+                    {
+                      id: 'call_update_mem_1',
+                      type: 'function',
+                      function: {
+                        name: 'updateUserMemory',
+                        arguments: JSON.stringify({ entityName: 'Bo', key: 'pet_breed', value: 'Corgi' })
+                      }
+                    },
+                    {
+                      id: 'call_update_mem_2',
+                      type: 'function',
+                      function: {
+                        name: 'updateUserMemory',
+                        arguments: JSON.stringify({ entityName: 'Bo', key: 'kibble_description', value: 'ngôi sao dẹt, 5mm' })
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        };
+      } else if (aiCallCount === 2) {
+        // Second LLM call after tool execution: LLM gives conversational answer
+        return {
+          data: {
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: 'Đã lưu thông tin bé Bơ vào bộ nhớ!'
+                }
+              }
+            ]
+          }
+        };
+      } else {
+        // Third LLM call (next chat request): check if memories are injected into System Prompt
+        const systemMsg = data.messages.find(m => m.role === 'system');
+        sentSystemPrompt = systemMsg ? systemMsg.content : null;
+        return {
+          data: {
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: 'Chào bạn! Mình có thể giúp gì cho bé Bơ?'
+                }
+              }
+            ]
+          }
+        };
+      }
+    };
+
+    const token = createAccessToken(mockUser);
+    
+    // Request 1: Save memories
+    const res1 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Bơ nhà mình là giống Corgi, ăn hạt hình ngôi sao dẹt kích thước 5mm nhé.' }]
+      }
+    });
+
+    assert.equal(res1.statusCode, 200);
+    assert.equal(res1.body.ok, true);
+    assert.equal(aiCallCount, 2);
+
+    // Verify memories were saved to DB
+    assert.equal(mockUserMemories.length, 2);
+    assert.equal(mockUserMemories[0].entity_name, 'Bo');
+    assert.equal(mockUserMemories[0].memory_key, 'pet_breed');
+    assert.equal(mockUserMemories[0].memory_value, 'Corgi');
+    assert.equal(mockUserMemories[1].entity_name, 'Bo');
+    assert.equal(mockUserMemories[1].memory_key, 'kibble_description');
+    assert.equal(mockUserMemories[1].memory_value, 'ngôi sao dẹt, 5mm');
+
+    // Request 2: Send another message to verify system prompt has the memory injected
+    const res2 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [
+          { role: 'user', content: 'Bơ nhà mình là giống Corgi, ăn hạt hình ngôi sao dẹt kích thước 5mm nhé.' },
+          { role: 'assistant', content: 'Đã lưu thông tin bé Bơ vào bộ nhớ!' },
+          { role: 'user', content: 'Hôm nay bé Bơ ăn thế nào?' }
+        ]
+      }
+    });
+
+    assert.equal(res2.statusCode, 200);
+    assert.equal(aiCallCount, 3);
+    assert.ok(sentSystemPrompt);
+    assert.ok(sentSystemPrompt.includes('[USER MEMORY - SAVED INFORMATION ABOUT USER & PETS]:'));
+    assert.ok(sentSystemPrompt.includes('* Pet Bo:'));
+    assert.ok(sentSystemPrompt.includes('pet_breed: Corgi'));
+    assert.ok(sentSystemPrompt.includes('kibble_description: ngôi sao dẹt, 5mm'));
+
+    // Request 3: Delete a memory key
+    aiCallCount = 0;
+    axios.post = async (url, data, config) => {
+      aiCallCount++;
+      if (aiCallCount === 1) {
+        return {
+          data: {
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: 'Tôi sẽ xóa thông tin giống loài của Bơ nhé.',
+                  tool_calls: [
+                    {
+                      id: 'call_delete_mem_1',
+                      type: 'function',
+                      function: {
+                        name: 'deleteUserMemory',
+                        arguments: JSON.stringify({ entityName: 'Bo', key: 'pet_breed' })
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        };
+      } else {
+        return {
+          data: {
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: 'Đã xóa thông tin!'
+                }
+              }
+            ]
+          }
+        };
+      }
+    };
+
+    const res3 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Quên giống loài của Bơ đi nhé.' }]
+      }
+    });
+
+    assert.equal(res3.statusCode, 200);
+    // Verify breed memory is deleted, but kibble description remains
+    assert.equal(mockUserMemories.length, 1);
+    assert.equal(mockUserMemories[0].memory_key, 'kibble_description');
+  });
+
+  it('POST /v1/chatbot chatbot memory normalization, invalid key validation and empty deletion edge cases', async () => {
+    mockUserMemories = []; // Reset memories
+    mockChatMessages = []; // Reset chat messages
+
+    const token = createAccessToken(mockUser);
+
+    // Edge Case 1: Normalization and Case-Insensitivity Check ('milo' vs 'Milo')
+    let aiCallCount = 0;
+    axios.post = async (url, data, config) => {
+      aiCallCount++;
+      if (aiCallCount === 1) {
+        // First tool call: Save using 'milo' in lower case
+        return {
+          data: {
+            choices: [{
+              message: {
+                role: 'assistant',
+                content: 'Lưu milo',
+                tool_calls: [{
+                  id: 'call_norm_1',
+                  type: 'function',
+                  function: {
+                    name: 'updateUserMemory',
+                    arguments: JSON.stringify({ entityName: 'milo', key: 'pet_breed', value: 'Ba Tư' })
+                  }
+                }]
+              }
+            }]
+          }
+        };
+      } else if (aiCallCount === 2) {
+        return { data: { choices: [{ message: { role: 'assistant', content: 'Đã lưu milo' } }] } };
+      } else if (aiCallCount === 3) {
+        // Third tool call: Save using 'Milo' in Capital case (should update the existing one)
+        return {
+          data: {
+            choices: [{
+              message: {
+                role: 'assistant',
+                content: 'Cập nhật Milo',
+                tool_calls: [{
+                  id: 'call_norm_2',
+                  type: 'function',
+                  function: {
+                    name: 'updateUserMemory',
+                    arguments: JSON.stringify({ entityName: 'Milo', key: 'pet_breed', value: 'Anh lông ngắn' })
+                  }
+                }]
+              }
+            }]
+          }
+        };
+      } else {
+        return { data: { choices: [{ message: { role: 'assistant', content: 'Đã cập nhật Milo' } }] } };
+      }
+    };
+
+    // Save with lowercase 'milo'
+    const res1 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: { messages: [{ role: 'user', content: 'Milo là mèo Ba Tư' }] }
+    });
+    assert.equal(res1.statusCode, 200);
+    assert.equal(mockUserMemories.length, 1);
+    // Entity name must be normalized to 'Milo' (Capital Case)
+    assert.equal(mockUserMemories[0].entity_name, 'Milo');
+    assert.equal(mockUserMemories[0].memory_value, 'Ba Tư');
+
+    // Update with Capital Case 'Milo'
+    const res2 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: { messages: [{ role: 'user', content: 'Milo là mèo Anh lông ngắn' }] }
+    });
+    assert.equal(res2.statusCode, 200);
+    // Should still have only 1 memory entry (overwritten/updated)
+    assert.equal(mockUserMemories.length, 1);
+    assert.equal(mockUserMemories[0].memory_value, 'Anh lông ngắn');
+
+    // Edge Case 2: Prevent saving invalid keys (e.g. 'pet_color')
+    aiCallCount = 0;
+    axios.post = async (url, data, config) => {
+      aiCallCount++;
+      if (aiCallCount === 1) {
+        return {
+          data: {
+            choices: [{
+              message: {
+                role: 'assistant',
+                content: 'Lưu màu',
+                tool_calls: [{
+                  id: 'call_invalid_key_1',
+                  type: 'function',
+                  function: {
+                    name: 'updateUserMemory',
+                    arguments: JSON.stringify({ entityName: 'Milo', key: 'pet_color', value: 'Vàng' })
+                  }
+                }]
+              }
+            }]
+          }
+        };
+      } else {
+        // The second call is executed after the server passes the tool error result back to AI
+        const toolMsg = data.messages.find(m => m.role === 'tool');
+        assert.ok(toolMsg);
+        const toolResult = JSON.parse(toolMsg.content);
+        assert.ok(toolResult.error);
+        assert.ok(toolResult.error.includes('Invalid memory key'));
+        return {
+          data: { choices: [{ message: { role: 'assistant', content: 'Xin lỗi, tôi không thể lưu khóa đó.' } }] }
+        };
+      }
+    };
+
+    const res3 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: { messages: [{ role: 'user', content: 'Milo màu vàng nhé' }] }
+    });
+    assert.equal(res3.statusCode, 200);
+    // Total memories should still be 1 (invalid key not saved)
+    assert.equal(mockUserMemories.length, 1);
+
+    // Edge Case 3: Deleting a key that does not exist
+    aiCallCount = 0;
+    axios.post = async (url, data, config) => {
+      aiCallCount++;
+      if (aiCallCount === 1) {
+        return {
+          data: {
+            choices: [{
+              message: {
+                role: 'assistant',
+                content: 'Xóa tuổi',
+                tool_calls: [{
+                  id: 'call_del_non_exist',
+                  type: 'function',
+                  function: {
+                    name: 'deleteUserMemory',
+                    arguments: JSON.stringify({ entityName: 'Milo', key: 'pet_weight_kg' })
+                  }
+                }]
+              }
+            }]
+          }
+        };
+      } else {
+        const toolMsg = data.messages.find(m => m.role === 'tool');
+        assert.ok(toolMsg);
+        const toolResult = JSON.parse(toolMsg.content);
+        assert.equal(toolResult.success, true);
+        assert.equal(toolResult.affectedRows, 0); // 0 rows affected
+        return {
+          data: { choices: [{ message: { role: 'assistant', content: 'Tôi đã kiểm tra và không thấy thông tin đó.' } }] }
+        };
+      }
+    };
+
+    const res4 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: { messages: [{ role: 'user', content: 'Xóa cân nặng của Milo đi' }] }
+    });
+    assert.equal(res4.statusCode, 200);
+    assert.equal(mockUserMemories.length, 1);
   });
 
   it('teardown server and restore mocks', async () => {
