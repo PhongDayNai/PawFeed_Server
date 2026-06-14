@@ -178,6 +178,11 @@ bool isFeeding = false;
 bool doorOpen = false;
 String feederMode = "idle";
 
+int currentServoAngle = SERVO_CLOSE_ANGLE;
+int targetServoAngle = SERVO_CLOSE_ANGLE;
+unsigned long lastServoUpdateAt = 0;
+const unsigned long SERVO_STEP_INTERVAL_MS = 6; // Tốc độ quay (12ms mỗi độ, tăng lên để quay chậm hơn)
+
 unsigned long feedingEndAt = 0;
 String currentFeedSource = "";
 String currentFeedRequestId = "";
@@ -969,9 +974,24 @@ void updateTempAp() {
 }
 
 // ================= SERVO / FEEDING =================
+void updateServo() {
+  if (currentServoAngle != targetServoAngle) {
+    unsigned long now = millis();
+    if (now - lastServoUpdateAt >= SERVO_STEP_INTERVAL_MS) {
+      lastServoUpdateAt = now;
+      if (currentServoAngle < targetServoAngle) {
+        currentServoAngle++;
+      } else {
+        currentServoAngle--;
+      }
+      feederServo.write(currentServoAngle);
+    }
+  }
+}
+
 void applyDoorState(bool open) {
   doorOpen = open;
-  feederServo.write(open ? SERVO_OPEN_ANGLE : SERVO_CLOSE_ANGLE);
+  targetServoAngle = open ? SERVO_OPEN_ANGLE : SERVO_CLOSE_ANGLE;
   digitalWrite(LED_PIN, open ? LOW : HIGH);
 }
 
@@ -2227,6 +2247,7 @@ void setup() {
   pinMode(SETUP_BUTTON_PIN, INPUT_PULLUP);
 
   feederServo.attach(FEEDER_PIN, 500, 2500);
+  feederServo.write(SERVO_CLOSE_ANGLE);
   applyDoorState(false);
 
   if (!LittleFS.begin()) {
@@ -2395,6 +2416,7 @@ void loop() {
   updateTempAp();
 
   updateFeeding();
+  updateServo();
 
   if (hasActiveConfig && WiFi.status() == WL_CONNECTED) {
     syncTimeWithConfig(activeConfig, false);
