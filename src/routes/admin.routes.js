@@ -1,6 +1,19 @@
 import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { authenticate } from '../middleware/auth.js';
+import {
+  listWiki,
+  getWiki,
+  createWiki,
+  updateWiki,
+  deleteWiki
+} from '../controllers/adminChatbotWiki.controller.js';
+import {
+  adminChatbotWikiParamsSchema,
+  listAdminChatbotWikiQuerySchema,
+  createAdminChatbotWikiSchema,
+  updateAdminChatbotWikiSchema
+} from '../validators/adminChatbotWiki.validator.js';
 import { requireRole } from '../middleware/requireRole.js';
 import { validateBody, validateParams, validateQuery } from '../middleware/validate.js';
 import { adminSensitiveRateLimiter } from '../middleware/rateLimits.js';
@@ -142,5 +155,12 @@ router.get('/devices/:deviceId/mqtt-credential', validateParams(adminDeviceMqttC
 router.get('/devices/:deviceId/mqtt-credentials', validateParams(adminDeviceMqttCredentialParamsSchema), asyncHandler(listDeviceMqttCredentialsController));
 router.post('/devices/:deviceId/rotate-mqtt-credential', adminSensitiveRateLimiter, validateParams(adminDeviceMqttCredentialParamsSchema), validateBody(rotateMqttCredentialSchema), asyncHandler(rotateDeviceMqttCredentialController));
 router.post('/devices/:deviceId/rotate-device-secret', adminSensitiveRateLimiter, validateParams(adminDeviceMqttCredentialParamsSchema), validateBody(rotateDeviceSecretSchema), asyncHandler(rotateDeviceSecretController));
+
+// Chatbot Wiki management routes
+router.get('/chatbot/wiki', validateQuery(listAdminChatbotWikiQuerySchema), asyncHandler(listWiki));
+router.get('/chatbot/wiki/:id', validateParams(adminChatbotWikiParamsSchema), asyncHandler(getWiki));
+router.post('/chatbot/wiki', adminSensitiveRateLimiter, validateBody(createAdminChatbotWikiSchema), asyncHandler(createWiki));
+router.patch('/chatbot/wiki/:id', adminSensitiveRateLimiter, validateParams(adminChatbotWikiParamsSchema), validateBody(updateAdminChatbotWikiSchema), asyncHandler(updateWiki));
+router.delete('/chatbot/wiki/:id', adminSensitiveRateLimiter, validateParams(adminChatbotWikiParamsSchema), asyncHandler(deleteWiki));
 
 export default router;
