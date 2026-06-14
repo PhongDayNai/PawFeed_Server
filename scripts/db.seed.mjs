@@ -59,7 +59,8 @@ function orderSeedFiles(files) {
     ['seed_admin.sql', 10],
     ['seed_mqtt_server.sql', 20],
     ['seed_system_settings.sql', 30],
-    ['seed_demo_device.sql', 40]
+    ['seed_demo_device.sql', 40],
+    ['seed_chatbot_wiki.sql', 50]
   ]);
 
   return [...files].sort((a, b) => {
