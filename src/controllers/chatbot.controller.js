@@ -16,6 +16,7 @@ import { sendSuccess } from '../utils/response.js';
 import { getUserDashboard } from '../services/dashboard.service.js';
 import { listUserDevices, getUserDevice, getUserDeviceStatus } from '../services/device.service.js';
 import { listUserDeviceEvents, listUserFeedingHistory } from '../services/operationLog.service.js';
+import { badRequestError } from '../utils/errors.js';
 
 export const CHATBOT_GREETINGS = [
   "Chào bạn! Tôi là Nomi, trợ lý chăm sóc thú cưng PawFeed. Rất vui được hỗ trợ bạn hôm nay! Bé cưng của bạn thế nào rồi? 🐾",
@@ -217,6 +218,10 @@ export async function askChatbot(req, res) {
   // Extract client message identifier from body or header
   const effectiveClientMsgId = clientMsgId || req.headers['idempotency-key'] || null;
 
+  if (effectiveClientMsgId && effectiveClientMsgId.length > 255) {
+    throw badRequestError('clientMsgId or Idempotency-Key must be at most 255 characters.', 'INVALID_CLIENT_MSG_ID');
+  }
+
   // Check if message with this clientMsgId / Idempotency-Key already exists
   let sessionId = null;
   let isDuplicate = false;
@@ -243,14 +248,29 @@ export async function askChatbot(req, res) {
   // 3. Extract and save the user's latest message with the active sessionId
   const userMessage = messages[messages.length - 1]?.content || '';
   if (userMessage && !isDuplicate) {
-    await saveChatMessage({
-      userId,
-      role: 'user',
-      content: userMessage,
-      model: resolvedModel,
-      sessionId,
-      clientMsgId: effectiveClientMsgId
-    });
+    try {
+      await saveChatMessage({
+        userId,
+        role: 'user',
+        content: userMessage,
+        model: resolvedModel,
+        sessionId,
+        clientMsgId: effectiveClientMsgId
+      });
+    } catch (err) {
+      if (err.code === 'ER_DUP_ENTRY' || err.message?.includes('Duplicate entry')) {
+        // Concurrency retry race condition: another request saved it first
+        isDuplicate = true;
+        if (effectiveClientMsgId) {
+          const existingMsg = await getMessageByClientMsgId(userId, effectiveClientMsgId);
+          if (existingMsg) {
+            sessionId = existingMsg.session_id;
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
   }
 
   // 4. Retrieve session-only chat history from DB to build the context for the AI

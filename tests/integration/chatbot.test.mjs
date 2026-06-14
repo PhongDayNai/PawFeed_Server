@@ -1794,6 +1794,111 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(mockChatMessages[2].content, 'Response number 2');
   });
 
+  it('POST /v1/chatbot rejects clientMsgId or Idempotency-Key if they exceed 255 characters', async () => {
+    const token = createAccessToken(mockUser);
+    const longKey = 'a'.repeat(256);
+
+    // Try with long clientMsgId in body
+    const res1 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Long body key' }],
+        clientMsgId: longKey
+      }
+    });
+    // Should fail at validator (Zod schema strict uuid checks or string validation)
+    assert.equal(res1.statusCode, 400);
+
+    // Try with long Idempotency-Key in header
+    const res2 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Idempotency-Key': longKey
+      },
+      body: {
+        messages: [{ role: 'user', content: 'Long header key' }]
+      }
+    });
+    assert.equal(res2.statusCode, 400);
+    assert.equal(res2.body.ok, false);
+    assert.equal(res2.body.error.code, 'INVALID_CLIENT_MSG_ID');
+  });
+
+  it('POST /v1/chatbot handles ER_DUP_ENTRY concurrency error gracefully', async () => {
+    mockChatMessages = []; // Reset history
+    const token = createAccessToken(mockUser);
+    const uuidKey = '330e8400-e29b-41d4-a716-446655440000';
+
+    axios.post = async (url, data, config) => {
+      return {
+        data: {
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Response with concurrent handle'
+              }
+            }
+          ]
+        }
+      };
+    };
+
+    // Override pool.execute to throw ER_DUP_ENTRY on INSERT
+    const pool = getPool();
+    const originalExecute = pool.execute;
+    
+    let isSecondCall = false;
+    pool.execute = async (sql, params) => {
+      const normalizedSql = sql.replace(/\s+/g, ' ');
+      if (normalizedSql.includes('INSERT INTO chatbot_messages') && isSecondCall && params[2] === 'user') {
+        // Pretend it was saved concurrently by another request
+        mockChatMessages.push({
+          id: mockChatMessages.length + 1,
+          user_id: params[0],
+          session_id: params[1],
+          role: 'user',
+          content: params[3],
+          model: params[4],
+          created_at: new Date(),
+          client_msg_id: params[6]
+        });
+        const err = new Error('Duplicate entry');
+        err.code = 'ER_DUP_ENTRY';
+        throw err;
+      }
+      return originalExecute(sql, params);
+    };
+
+    // First request: normal
+    isSecondCall = false;
+    const res1 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Hello' }],
+        clientMsgId: uuidKey
+      }
+    });
+    assert.equal(res1.statusCode, 200);
+    assert.equal(mockChatMessages.length, 2); // user + assistant
+
+    // Second request: throws ER_DUP_ENTRY on user message insert, but should succeed and reuse session
+    isSecondCall = true;
+    const res2 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Hello' }],
+        clientMsgId: uuidKey
+      }
+    });
+    assert.equal(res2.statusCode, 200);
+    assert.equal(res2.body.ok, true);
+    assert.equal(res2.body.message.content, 'Response with concurrent handle');
+    
+    // Restore
+    pool.execute = originalExecute;
+  });
+
   it('teardown server and restore mocks', async () => {
     // Restore original methods
     const pool = getPool();
