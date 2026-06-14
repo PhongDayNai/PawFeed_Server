@@ -584,10 +584,15 @@ describe('Chatbot API Integration Tests', () => {
 
     // Verify tools were supplied to AI
     assert.ok(receivedTools);
-    assert.equal(receivedTools.length, 3);
+    assert.equal(receivedTools.length, 8);
     assert.equal(receivedTools[0].function.name, 'calculateMotorRunTime');
     assert.equal(receivedTools[1].function.name, 'calculateFlowRate');
     assert.equal(receivedTools[2].function.name, 'calculateDailyFoodRequirement');
+    assert.equal(receivedTools[3].function.name, 'getUserDashboardOverview');
+    assert.equal(receivedTools[4].function.name, 'getUserDevicesList');
+    assert.equal(receivedTools[5].function.name, 'getUserDeviceDetail');
+    assert.equal(receivedTools[6].function.name, 'proposeFeedNow');
+    assert.equal(receivedTools[7].function.name, 'proposeSaveSchedule');
 
     // Verify tool results sent back to AI
     assert.ok(finalPayloadSent);
