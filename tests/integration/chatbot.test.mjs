@@ -411,6 +411,140 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(aiReceivedMessagesList[2][1].content, 'Message 3');
   });
 
+  it('implements function calling (tool use) for chatbot and processes mathematical calculations', async () => {
+    mockChatMessages = []; // Reset history
+    const token = createAccessToken(mockUser);
+
+    let callCount = 0;
+    let receivedTools = null;
+    let finalPayloadSent = null;
+
+    axios.post = async (url, data, config) => {
+      callCount++;
+      if (callCount === 1) {
+        receivedTools = data.tools;
+        // Mock response requesting tool call
+        return {
+          data: {
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: 'call_motor_1',
+                      type: 'function',
+                      function: {
+                        name: 'calculateMotorRunTime',
+                        arguments: JSON.stringify({ foodWeightGrams: 50, flowRateGramsPerSecond: 4.5 })
+                      }
+                    },
+                    {
+                      id: 'call_flow_1',
+                      type: 'function',
+                      function: {
+                        name: 'calculateFlowRate',
+                        arguments: JSON.stringify({ measuredWeightGrams: 45, testDurationMs: 10504 })
+                      }
+                    },
+                    {
+                      id: 'call_nutri_1',
+                      type: 'function',
+                      function: {
+                        name: 'calculateDailyFoodRequirement',
+                        arguments: JSON.stringify({ petType: 'cat', weightKg: 5, activityLevel: 'normal', ageGroup: 'adult' })
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        };
+      } else {
+        finalPayloadSent = data.messages;
+        return {
+          data: {
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: 'Dựa trên tính toán, thời gian chạy motor khoảng 12 giây, tốc độ dòng chảy thực tế là 4.5 g/s và nhu cầu ăn hàng ngày của mèo là 81g.'
+                }
+              }
+            ]
+          }
+        };
+      }
+    };
+
+    const res = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Tính giúp tôi' }]
+      }
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(callCount, 2);
+
+    // Verify tools were supplied to AI
+    assert.ok(receivedTools);
+    assert.equal(receivedTools.length, 3);
+    assert.equal(receivedTools[0].function.name, 'calculateMotorRunTime');
+    assert.equal(receivedTools[1].function.name, 'calculateFlowRate');
+    assert.equal(receivedTools[2].function.name, 'calculateDailyFoodRequirement');
+
+    // Verify tool results sent back to AI
+    assert.ok(finalPayloadSent);
+    // System + User + Assistant (with tool_calls) + 3 Tool responses
+    assert.equal(finalPayloadSent.length, 6);
+    
+    // Assistant message requesting tool_calls
+    const assistantMsg = finalPayloadSent[2];
+    assert.equal(assistantMsg.role, 'assistant');
+    assert.ok(assistantMsg.tool_calls);
+    assert.equal(assistantMsg.tool_calls.length, 3);
+
+    // Tool responses
+    const toolMsg1 = finalPayloadSent[3];
+    assert.equal(toolMsg1.role, 'tool');
+    assert.equal(toolMsg1.tool_call_id, 'call_motor_1');
+    const motorResult = JSON.parse(toolMsg1.content);
+    assert.equal(motorResult.foodWeightGrams, 50);
+    assert.equal(motorResult.estimatedFlowRate, 4.5);
+    assert.equal(motorResult.motorDurationMs, 11615); // (50/4.5)*1000 + 504 = 11111 + 504 = 11615
+    assert.equal(motorResult.clientDurationMs, 10607); // 11615 - 1008 = 10607
+    assert.equal(motorResult.recommendedTimeSeconds, 12); // Math.round(11615 / 1000) = 12
+
+    const toolMsg2 = finalPayloadSent[4];
+    assert.equal(toolMsg2.role, 'tool');
+    assert.equal(toolMsg2.tool_call_id, 'call_flow_1');
+    const flowResult = JSON.parse(toolMsg2.content);
+    assert.equal(flowResult.measuredWeightGrams, 45);
+    assert.equal(flowResult.testDurationMs, 10504);
+    assert.equal(flowResult.effectiveDurationMs, 10000);
+    assert.equal(flowResult.flowRateGramsPerSecond, 4.5); // 45 / (10000 / 1000) = 4.5
+
+    const toolMsg3 = finalPayloadSent[5];
+    assert.equal(toolMsg3.role, 'tool');
+    assert.equal(toolMsg3.tool_call_id, 'call_nutri_1');
+    const nutriResult = JSON.parse(toolMsg3.content);
+    assert.equal(nutriResult.petType, 'cat');
+    assert.equal(nutriResult.restingEnergyRequirementKcal, 234); // 70 * (5)^0.75 = 234.05 = 234
+    assert.equal(nutriResult.dailyEnergyRequirementKcal, 281); // 234.05 * 1.2 = 280.87 = 281
+    assert.equal(nutriResult.recommendedDailyFoodGrams, 80); // (280.87 / 3500) * 1000 = 80.25 = 80
+
+    // Verify DB only saves final assistant response
+    assert.equal(mockChatMessages.length, 2);
+    assert.equal(mockChatMessages[0].role, 'user');
+    assert.equal(mockChatMessages[0].content, 'Tính giúp tôi');
+    assert.equal(mockChatMessages[1].role, 'assistant');
+    assert.equal(mockChatMessages[1].content, 'Dựa trên tính toán, thời gian chạy motor khoảng 12 giây, tốc độ dòng chảy thực tế là 4.5 g/s và nhu cầu ăn hàng ngày của mèo là 81g.');
+  });
+
   it('teardown server and restore mocks', async () => {
     // Restore original methods
     const pool = getPool();

@@ -20,6 +20,96 @@ export function resolveModelName(modelName) {
   return modelName;
 }
 
+export const CHATBOT_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'calculateMotorRunTime',
+      description: 'Calculate feeder motor run time (seconds and milliseconds) based on desired food weight. Supports auto-estimating the flow rate if the user provides kibble size and shape.',
+      parameters: {
+        type: 'object',
+        properties: {
+          foodWeightGrams: {
+            type: 'number',
+            description: 'Desired food weight in grams.'
+          },
+          flowRateGramsPerSecond: {
+            type: 'number',
+            description: 'Kibble flow rate in grams per second. Provide this if the feeder has been calibrated.'
+          },
+          kibbleShape: {
+            type: 'string',
+            enum: ['round', 'complex'],
+            description: 'Kibble shape: "round" or "complex" (e.g. triangle, star, bone).'
+          },
+          kibbleSizeMm: {
+            type: 'number',
+            description: 'Kibble size in millimeters (mm).'
+          }
+        },
+        required: ['foodWeightGrams']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'calculateFlowRate',
+      description: 'Calculate actual kibble flow rate (g/s) at fully open state based on measured kibble weight after a calibration test run.',
+      parameters: {
+        type: 'object',
+        properties: {
+          measuredWeightGrams: {
+            type: 'number',
+            description: 'Measured kibble weight in grams collected during the test run.'
+          },
+          testDurationMs: {
+            type: 'number',
+            description: 'Test run duration in milliseconds. Defaults to 10000 ms (10 seconds).'
+          }
+        },
+        required: ['measuredWeightGrams']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'calculateDailyFoodRequirement',
+      description: 'Calculate daily energy requirement (RER/DER) and recommended daily food weight (grams) for dogs or cats based on pet type, weight, activity level, age group, and food calorie density.',
+      parameters: {
+        type: 'object',
+        properties: {
+          petType: {
+            type: 'string',
+            enum: ['cat', 'dog'],
+            description: 'Pet type: "cat" or "dog".'
+          },
+          weightKg: {
+            type: 'number',
+            description: 'Weight of the pet in kilograms (kg).'
+          },
+          activityLevel: {
+            type: 'string',
+            enum: ['low', 'normal', 'high'],
+            description: 'Pet activity level: "low", "normal", or "high".'
+          },
+          ageGroup: {
+            type: 'string',
+            enum: ['kitten_puppy', 'adult', 'senior'],
+            description: 'Pet age group: "kitten_puppy", "adult", or "senior".'
+          },
+          calorieDensity: {
+            type: 'number',
+            description: 'Calorie density of the food in kcal/kg. Defaults to 3500 kcal/kg.'
+          }
+        },
+        required: ['petType', 'weightKg', 'activityLevel', 'ageGroup']
+      }
+    }
+  }
+];
+
 /**
  * Calls the OpenAI compatible AI server to get chat completions.
  * @param {Object} params
@@ -27,9 +117,11 @@ export function resolveModelName(modelName) {
  * @param {string} [params.model] Short or full name of the model
  * @param {number} [params.temperature] Temperature value (0 to 2)
  * @param {number} [params.maxTokens] Max tokens to generate
- * @returns {Promise<Object>} The response message object { role, content }
+ * @param {Array} [params.tools] Array of tool objects
+ * @param {string|Object} [params.toolChoice] Tool choice configuration
+ * @returns {Promise<Object>} The response message object { role, content, tool_calls }
  */
-export async function getChatCompletion({ messages, model, temperature, maxTokens }) {
+export async function getChatCompletion({ messages, model, temperature, maxTokens, tools, toolChoice }) {
   const url = `${env.ai.baseUrl.replace(/\/$/, '')}/chat/completions`;
 
   const headers = {
@@ -44,7 +136,9 @@ export async function getChatCompletion({ messages, model, temperature, maxToken
     model: resolveModelName(model),
     messages,
     temperature: temperature ?? 0.7,
-    ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {})
+    ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+    ...(tools !== undefined ? { tools } : {}),
+    ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {})
   };
 
   try {
