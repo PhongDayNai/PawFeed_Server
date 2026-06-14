@@ -1264,6 +1264,50 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(mockUserMemories.length, 1);
   });
 
+  it('GET /v1/chatbot/history extracts tool_calls from JSON block in message content', async () => {
+    // Populate mock history with a JSON block
+    const mockJsonBlock = JSON.stringify({
+      tool_calls: [
+        {
+          id: 'call_test_123',
+          type: 'function',
+          function: {
+            name: 'proposeFeedNow',
+            arguments: { deviceId: 'feeder001', openDurationMs: 2000 }
+          }
+        }
+      ]
+    }, null, 2);
+
+    mockChatMessages = [
+      {
+        id: 1,
+        user_id: mockUser.id,
+        role: 'assistant',
+        content: `Tôi đề xuất cho ăn.\n\n\`\`\`json\n${mockJsonBlock}\n\`\`\``,
+        model: 'gemma-4-e4b',
+        created_at: new Date()
+      }
+    ];
+
+    const token = createAccessToken(mockUser);
+    const res = await httpRequest(server, 'GET', '/v1/chatbot/history', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.history.length, 1);
+    
+    const msg = res.body.history[0];
+    assert.equal(msg.content, 'Tôi đề xuất cho ăn.');
+    assert.ok(msg.tool_calls);
+    assert.equal(msg.tool_calls.length, 1);
+    assert.equal(msg.tool_calls[0].id, 'call_test_123');
+    assert.equal(msg.tool_calls[0].function.name, 'proposeFeedNow');
+    assert.equal(msg.tool_calls[0].function.arguments.deviceId, 'feeder001');
+  });
+
   it('teardown server and restore mocks', async () => {
     // Restore original methods
     const pool = getPool();

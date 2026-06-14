@@ -387,11 +387,33 @@ export async function getChatHistory(req, res) {
 
   const history = await getUserChatHistory(userId, limit);
 
-  // Clean JSON blocks from content for client display
-  const cleanedHistory = history.map(msg => ({
-    ...msg,
-    content: msg.content ? msg.content.replace(/```json[\s\S]*?```/g, '').trim() : msg.content
-  }));
+  // Clean JSON blocks from content for client display and extract tool_calls
+  const cleanedHistory = history.map(msg => {
+    let tool_calls = undefined;
+    let content = msg.content;
+
+    if (content) {
+      const jsonRegex = /```json\s*([\s\S]*?)\s*```/g;
+      const match = jsonRegex.exec(content);
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          if (parsed && parsed.tool_calls) {
+            tool_calls = parsed.tool_calls;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      content = content.replace(/```json[\s\S]*?```/g, '').trim();
+    }
+
+    return {
+      ...msg,
+      content,
+      ...(tool_calls ? { tool_calls } : {})
+    };
+  });
 
   return sendSuccess(res, {
     history: cleanedHistory
