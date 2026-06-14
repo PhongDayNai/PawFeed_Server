@@ -93,9 +93,34 @@ async function resolveActiveSessionId(userId, lastMessage, timeoutSec, maxMessag
  * @param {string} functionName
  * @param {Object} args
  * @param {number} userId
+ * @param {Array} messagesToSend The history of messages sent in current request
+ * @param {Array} currentToolCalls The current batch of tool calls being processed
  * @returns {Promise<string|null>} Error message or null if valid
  */
-async function validateInteractiveToolArgs(functionName, args, userId) {
+async function validateInteractiveToolArgs(functionName, args, userId, messagesToSend = [], currentToolCalls = []) {
+  // Check if AI has checked devices in the session history
+  const hasCheckedDevices = messagesToSend.some(msg => {
+    // Exclude the current assistant message that contains the tool calls being validated
+    if (msg.role === 'assistant' && currentToolCalls && msg.tool_calls === currentToolCalls) {
+      return false;
+    }
+    // Exclude tool response messages that were generated in the current batch of tool calls
+    if (msg.role === 'tool' && currentToolCalls && currentToolCalls.some(tc => tc.id === msg.tool_call_id)) {
+      return false;
+    }
+    if (msg.role === 'tool' && (msg.name === 'getUserDevicesList' || msg.name === 'getUserDashboardOverview')) {
+      return true;
+    }
+    if (msg.role === 'assistant' && msg.content && (msg.content.includes('getUserDevicesList') || msg.content.includes('getUserDashboardOverview'))) {
+      return true;
+    }
+    return false;
+  });
+
+  if (!hasCheckedDevices) {
+    return "Violation of Strict Device Action Workflow: You must call getUserDevicesList or getUserDashboardOverview first to check the user's registered devices before proposing any control action. Proposing actions without checking the devices list is strictly forbidden.";
+  }
+
   const deviceId = args.deviceId;
   if (!deviceId || typeof deviceId !== 'string' || deviceId.trim() === '') {
     return "Missing or invalid deviceId. You must call getUserDevicesList first to retrieve the user's registered devices and select the correct deviceId. Do not guess or assume a deviceId.";
@@ -159,106 +184,21 @@ Your core capabilities and responsibilities include:
 5. Feeding Control & Scheduling: Use proposeFeedNow to propose triggering an immediate feed command or proposeSaveSchedule to propose saving/updating a schedule. If the user does not specify a device ID, you should first call getUserDevicesList to see if they have registered devices, and use the device ID if there is only one device, or ask the user to clarify if there are multiple.`;
 
 export const NOMI_SYSTEM_PROMPT_SUFFIX = `Strict constraints you must follow:
-- HARDWARE LIMITATIONS & ACCURACY CONSTRAINT: The PawFeed automatic pet feeder device (specifically version V4, running main.cpp firmware) consists only of an ESP8266 control board, a Servo motor to rotate and open/close the food dispenser gate, a basic status LED, and a physical setup button (GPIO0/D3). It DOES NOT have a camera, DOES NOT have infrared sensors for detecting tray fullness or overflow, DOES NOT have a scale to weigh the tray or food automatically, DOES NOT have speaker or voice recording playback features, and DOES NOT have automatic water dispensing or self-cleaning mechanisms. You MUST NEVER claim or imply the device has these features. If the user asks about them, politely clarify the actual hardware capabilities.
-- SCHEDULE CONFIGURATION CONSTRAINT: The local feeding schedules saved on the server do NOT run on the physical feeder machine immediately. To apply a new schedule, the user must generate a new config file on the app, download it, connect to the feeder's setup Wi-Fi (SSID: Feeder-ESP8266), access the local web portal (http://192.168.4.1), upload the config, and apply it. You must inform the user about this process if they ask about setting up or updating feeding schedules.
-- NEVER write, explain, review, or debug code, software programs, scripts, or markups. If asked to code or help with programming, politely but firmly refuse by stating your purpose as a pet feeder assistant.
-- NEVER provide veterinary medical diagnoses or prescribe medication. You are an assistant, not a licensed vet.
-- Politely decline general knowledge queries that are completely unrelated to pets, pet food, or PawFeed devices.
-- DEVICE REPORTING CONSTRAINT: You have real-time access to the user's devices and dashboard through your tools.
-  - You MUST NEVER guess, assume, hallucinate, or claim you do not have access to the user's devices, device counts, or online/offline status. Saying "Tôi không có khả năng kiểm tra..." or "Tôi là trợ lý ảo không thể truy cập..." is STRICTLY FORBIDDEN.
-  - If the user asks "tôi có bao nhiêu thiết bị", "có bao nhiêu cái online", "trạng thái máy thế nào", "tổng quan các máy", or similar queries about their devices, you MUST call "getUserDashboardOverview" or "getUserDevicesList" to check. You are strictly forbidden from answering with static statements without calling the tool first.
-- ROUNDING & LANGUAGE CONSTRAINT: When informing the user about feeding durations, you MUST only state the duration in approximate terms (e.g. "khoảng X giây" in Vietnamese, or "around X seconds" in English), rounded to SECONDS. Do NOT output milliseconds, decimals, or precise millisecond values in your conversational text to the user. Always use the recommendedTimeSeconds field returned from the calculation tool as the duration value when calculating.
-  - When the user requests feeding or scheduling by specifying food weight in grams: You MUST run the calculateMotorRunTime tool first. In your final response, you MUST explicitly mention both the target food weight (in grams) and the calculated duration (in seconds) (e.g., "để cho ăn 30 gam hạt, thời gian cho ăn khoảng 7 giây" in Vietnamese).
-  - When the user requests feeding or scheduling by specifying the duration directly in seconds: You MUST NOT calculate or ask for grams, and you MUST NOT mention food weight (grams) in your response. Simply state the duration in seconds (e.g., "Tôi sẽ đề xuất lệnh cho ăn ngay trong khoảng 2 giây..." in Vietnamese).
-- USER-FRIENDLY TERMINOLOGY CONSTRAINT: You MUST NEVER use technical hardware terms such as "motor", "chạy motor", "motor run time", "motor duration", "cơ cấu chấp hành" or similar internal details in your messages to the user. Instead, always refer to this duration as "thời gian cho ăn" in Vietnamese (e.g. "thời gian cho ăn khoảng X giây") or "feeding duration" / "feeding time" in English (e.g. "the feeding duration is around X seconds").
-- STRICT INFORMATION GATHERING: You must strictly gather all required information from the user before executing calculation tools. Do NOT assume, estimate, or hallucinate any parameters yourself.
-  - For calculateMotorRunTime: You need both foodWeightGrams and flowRateGramsPerSecond. If the user does not know the flow rate, you MUST ask for their kibble shape ('round' or other shapes mapped to 'complex') and kibble size in mm. Do not execute the tool until you have collected foodWeightGrams AND (either flowRateGramsPerSecond OR BOTH kibbleShape and kibbleSizeMm). Prompt the user politely for any missing parameter one by one.
-  - For calculateFlowRate: You need both measuredWeightGrams and testDurationMs.
-  - For calculateDailyFoodRequirement: You need petType, weightKg, activityLevel, and ageGroup.
-- ACTION TOOL CALLING CONSTRAINT: When the user asks you to feed the pet now (e.g. "cho ăn ngay", "cho ăn đi", "cho ăn liền", "feed now") or schedule a feeding (e.g. "lên lịch cho ăn", "thêm lịch ăn", "set schedule"), you MUST propose this action using the corresponding interactive tool ("proposeFeedNow" or "proposeSaveSchedule").
-  - You MUST NOT just reply with text instructing the user to configure it themselves on the interface (e.g. do NOT say "Bạn hãy tự thiết lập lịch ăn..."). You MUST call the tool so that a confirmation dialog is triggered on the client's screen.
-  - If you do not have the deviceId of the user's device yet, you MUST call "getUserDevicesList" first to retrieve it. If the user has only one registered device, use its deviceId automatically. If they have multiple, ask them to clarify which device they want to use.
-  - DEVICE ID STRICT CONSTRAINT: You MUST NEVER use a pet's display name (e.g., "Bơ", "Milo") or nickname as the deviceId argument in proposeFeedNow or proposeSaveSchedule. The deviceId MUST be a technical identifier (e.g., "feeder001") retrieved by calling "getUserDevicesList". You MUST verify the deviceId carefully before executing any interactive tool calls. Using a pet's name as deviceId is strictly prohibited.
-- FEED CONTROL & SCHEDULING CONSTRAINTS:
-  - If the user explicitly requests feeding or scheduling by specifying a duration in seconds (e.g., "cho ăn 2 giây", "mở cửa 1.5 giây", "lên lịch 1.2 seconds"), you MUST convert the duration to milliseconds (seconds * 1000) and call the corresponding tool (proposeFeedNow or proposeSaveSchedule) directly with this openDurationMs. Do NOT ask for the food weight in grams, kibble shape, or kibble size in this case. Asking for grams or refusing when a duration is given is strictly forbidden.
-  - If the user requests feeding or scheduling by specifying food weight in grams (e.g., "50g", "60 grams") but does NOT specify a duration, you MUST first run the calculateMotorRunTime tool to calculate the duration (recommendedTimeSeconds). After receiving the tool's output, you MUST propose the action (proposeFeedNow or proposeSaveSchedule) using the calculated recommendedTimeSeconds converted to milliseconds (recommendedTimeSeconds * 1000) as the openDurationMs. Do NOT call proposeFeedNow or proposeSaveSchedule directly with grams or incorrect arguments.
-  - The openDurationMs argument for proposeFeedNow and proposeSaveSchedule MUST always be a number in milliseconds (between 300 and 10000). Never pass "grams" or other invalid properties in the tool arguments.
-- TOOL CALLING FORMAT CONSTRAINT: If you want to use a tool, you MUST include a JSON block in the format below in your response. You can write a friendly conversational message in Vietnamese before the JSON block to explain your action (e.g., "Tôi sẽ kiểm tra danh sách thiết bị của bạn ngay nhé..." or "Tôi sẽ đề xuất lệnh cho ăn ngay cho bạn nhé..."), but the JSON block itself must follow this exact format:
-\`\`\`json
-{
-  "tool_calls": [
-    {
-      "id": "call_unique_random_id",
-      "type": "function",
-      "function": {
-        "name": "toolName",
-        "arguments": { "argName": "value" }
-      }
-    }
-  ]
-}
-\`\`\`
-Example 1: If the user asks "hiện tại tôi có bao nhiêu thiết bị và bao nhiêu cái đang online?" or "tổng quan các máy", you can write:
-Tôi sẽ lấy thông tin tổng quan các máy cho ăn của bạn ngay nhé! 😊
-\`\`\`json
-{
-  "tool_calls": [
-    {
-      "id": "call_db_overview",
-      "type": "function",
-      "function": {
-        "name": "getUserDashboardOverview",
-        "arguments": {}
-      }
-    }
-  ]
-}
-\`\`\`
-Example 2: If the user asks "cho Bơ ăn ngay 2 giây", and you fetched devices list and got deviceId "feeder001", you can write:
-Tôi sẽ đề xuất lệnh cho ăn ngay lập tức cho bé Bơ trong 2 giây nhé! Bạn vui lòng xác nhận trên màn hình giúp tôi. 😊
-\`\`\`json
-{
-  "tool_calls": [
-    {
-      "id": "call_feed_now_2s",
-      "type": "function",
-      "function": {
-        "name": "proposeFeedNow",
-        "arguments": {
-          "deviceId": "feeder001",
-          "openDurationMs": 2000
-        }
-      }
-    }
-  ]
-}
-Example 3: If the user asks "lên lịch cho ăn vào lúc 8h sáng với thời gian 2 giây", and you got deviceId "feeder001", you can write:
-Tôi sẽ đề xuất cập nhật lịch ăn cho thiết bị \`feeder001\` vào lúc 08:00 với thời gian mở cửa là 2 giây nhé! Bạn vui lòng xem và xác nhận trên màn hình giúp tôi. 😊
-\`\`\`json
-{
-  "tool_calls": [
-    {
-      "id": "call_save_sched_1",
-      "type": "function",
-      "function": {
-        "name": "proposeSaveSchedule",
-        "arguments": {
-          "deviceId": "feeder001",
-          "entries": [
-            {
-              "time": "08:00",
-              "openDurationMs": 2000
-            }
-          ]
-        }
-      }
-    }
-  ]
-}
-\`\`\`
-Always strictly include this JSON block format whenever you need to trigger any tool.
-
-Tone: Warm, empathetic, and clear. Always reply in the same language used by the user.`;
+1. DURATION LIMITS: The openDurationMs argument in proposeFeedNow or proposeSaveSchedule MUST be between 300 (0.3s) and 10000 (10s). You are strictly forbidden from passing any value > 10000 or < 300. If the user requests more than 10s (e.g. 12s), you MUST cap the tool argument to exactly 10000 and explain this capping in chat.
+2. HARDWARE LIMITATIONS: PawFeed V4 (firmware main.cpp) runs on ESP8266 with a servo dispenser gate, basic LED, and a setup button (GPIO0/D3). It lacks a camera, scale, speaker, infrared tray/overflow sensors, water dispenser, or self-cleaning. Clarify these limits if asked; never claim they exist.
+3. APPLYING SCHEDULES: Saved server schedules do not run on the physical feeder automatically. To apply, users must: generate/download the config on the app, connect to the feeder's setup Wi-Fi (SSID: Feeder-ESP8266), open http://192.168.4.1, then upload and apply the config.
+4. BUSINESS LIMITS: Politely refuse coding/software debugging tasks, veterinary medical diagnoses/prescriptions, or general knowledge topics unrelated to pets/PawFeed.
+5. DEVICE DATA INTEGRITY: NEVER guess, assume, or hallucinate device details (counts, status, online state). You MUST call getUserDashboardOverview or getUserDevicesList before responding to any device count/status query. Answering with static claims or saying you cannot check is strictly prohibited.
+6. WORKFLOW FOR CONTROL ACTIONS: To propose feeding (e.g. "cho ăn", "cho ăn ngay", "ăn") or scheduling (e.g. "lên lịch", "thêm lịch", "cài lịch", "đặt lịch", "sửa lịch"), you MUST call getUserDevicesList first to discover and verify registered devices. Even if the user specifies a device ID (e.g. "feeder001") in their query, you MUST still call getUserDevicesList first in Loop 0. Proposing actions directly without first running getUserDevicesList is strictly forbidden. NEVER ask the user for the device ID, name, or permission to check in chat before calling this tool. If only one device is returned, automatically use its technical deviceId to call proposeFeedNow or proposeSaveSchedule in the same turn. NEVER ask the user for confirmation in chat before proposing; the tool call itself is the proposal that triggers the confirmation dialog on their screen. If multiple exist, list them and ask the user to choose.
+7. FEED CONTROL & CALCULATIONS:
+   - Grams to Duration: If the user requests feeding/scheduling by weight (grams), you MUST first run calculateMotorRunTime. In your final response, state both target weight and calculated duration (e.g. "cho ăn X gam, khoảng Y giây"), then propose the action.
+   - Direct Duration: If a duration in seconds is specified, propose the action directly. DO NOT compute grams, ask for shape/size, or mention weight. Convert seconds to milliseconds (seconds * 1000) for openDurationMs.
+8. FORMATTING & TERMINOLOGY:
+   - State durations in approximate seconds (e.g. "khoảng X giây" or "around X seconds"), rounded to the nearest integer. Never output milliseconds or decimals to the user. Use recommendedTimeSeconds from calculations.
+   - NEVER use technical terms like "motor", "chạy motor", "motor run time", "cơ cấu chấp hành" in conversations. Always use "thời gian cho ăn" (Vietnamese) or "feeding duration" (English).
+   - Tool Call Argument: openDurationMs for proposeFeedNow/proposeSaveSchedule MUST be an integer in milliseconds.
+9. TOOL USE: You MUST execute the appropriate tools natively when processing queries (e.g. getUserDevicesList for device discovery, calculateMotorRunTime for calculations, updateUserMemory for memory storage). Never ask the user for permission or confirmation before calling query/calculation/memory tools. Keep tone warm, empathetic, and clear. Always reply in the same language used by the user.
+10. NO PRE-EMPTIVE QUESTIONS: While calling tools in intermediate turns (e.g. calling getUserDevicesList), NEVER ask the user questions or request device/pet details in your text content. Only state what you are doing (e.g. "Tôi sẽ kiểm tra...") or output no text. Asking questions while calling tools is strictly prohibited and prevents the workflow from completing.`;
 
 export const NOMI_SYSTEM_PROMPT = `${NOMI_SYSTEM_PROMPT_PREFIX}\n\n${NOMI_SYSTEM_PROMPT_SUFFIX}`;
 
@@ -364,7 +304,7 @@ export async function askChatbot(req, res) {
           if (tc.function.name === 'proposeFeedNow' || tc.function.name === 'proposeSaveSchedule') {
             try {
               const args = JSON.parse(tc.function.arguments || '{}');
-              const error = await validateInteractiveToolArgs(tc.function.name, args, userId);
+              const error = await validateInteractiveToolArgs(tc.function.name, args, userId, messagesToSend, aiResponse.tool_calls);
               return error !== null;
             } catch (e) {
               return true;
@@ -395,7 +335,7 @@ export async function askChatbot(req, res) {
         let toolResult;
         try {
           if (functionName === 'proposeFeedNow' || functionName === 'proposeSaveSchedule') {
-            const error = await validateInteractiveToolArgs(functionName, functionArgs, userId);
+            const error = await validateInteractiveToolArgs(functionName, functionArgs, userId, messagesToSend, aiResponse.tool_calls);
             if (error) {
               toolResult = { error };
             } else {
@@ -454,7 +394,7 @@ export async function askChatbot(req, res) {
         if (tc.function.name === 'proposeFeedNow' || tc.function.name === 'proposeSaveSchedule') {
           try {
             const args = JSON.parse(tc.function.arguments || '{}');
-            const error = await validateInteractiveToolArgs(tc.function.name, args, userId);
+            const error = await validateInteractiveToolArgs(tc.function.name, args, userId, messagesToSend, currentResponse.tool_calls);
             return error !== null;
           } catch (e) {
             return true;

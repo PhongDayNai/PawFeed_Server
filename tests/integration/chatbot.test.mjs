@@ -719,6 +719,41 @@ describe('Chatbot API Integration Tests', () => {
     let callCount = 0;
     let finalPayloadSent = null;
 
+    // Turn 1: AI calls getUserDevicesList to discover devices
+    axios.post = async (url, data, config) => {
+      return {
+        data: {
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Tôi sẽ lấy danh sách máy.',
+                tool_calls: [
+                  {
+                    id: 'call_list_test_1',
+                    type: 'function',
+                    function: {
+                      name: 'getUserDevicesList',
+                      arguments: '{}'
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      };
+    };
+
+    const res1 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Xem danh sách thiết bị' }]
+      }
+    });
+    assert.equal(res1.statusCode, 200);
+
+    // Turn 2: AI proposes feeding but leaves deviceId empty in loop 1, then self-corrects in loop 2
     axios.post = async (url, data, config) => {
       callCount++;
       if (callCount === 1) {
@@ -772,6 +807,90 @@ describe('Chatbot API Integration Tests', () => {
       }
     };
 
+    const res2 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'cho ăn 2s đi' }]
+      }
+    });
+
+    assert.equal(res2.statusCode, 200);
+    assert.equal(res2.body.ok, true);
+    assert.equal(callCount, 2); // Loop runs twice due to correction
+    
+    // Verify error tool response was sent back to AI in next loop
+    assert.ok(finalPayloadSent);
+    // Index 5 in messagesToSend: System + User (Xem ds) + Assistant (list tool call) + User (cho ăn) + Assistant (missing device) + Tool (error response)
+    const toolErrorMsg = finalPayloadSent[5];
+    assert.equal(toolErrorMsg.role, 'tool');
+    assert.equal(toolErrorMsg.tool_call_id, 'call_feed_missing_device');
+    const toolErrorContent = JSON.parse(toolErrorMsg.content);
+    assert.ok(toolErrorContent.error);
+    assert.ok(toolErrorContent.error.includes('Missing or invalid deviceId'));
+
+    // Verify final response to client contains valid deviceId
+    assert.ok(res2.body.message.tool_calls);
+    const parsedArgs = JSON.parse(res2.body.message.tool_calls[0].function.arguments);
+    assert.equal(parsedArgs.deviceId, 'feeder001');
+  });
+
+  it('POST /v1/chatbot rejects concurrent calls of getUserDevicesList and proposeFeedNow', async () => {
+    mockChatMessages = []; // Reset history
+    const token = createAccessToken(mockUser);
+
+    let callCount = 0;
+    let finalPayloadSent = null;
+
+    axios.post = async (url, data, config) => {
+      callCount++;
+      if (callCount === 1) {
+        return {
+          data: {
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: 'Tôi sẽ lấy danh sách thiết bị và cho ăn.',
+                  tool_calls: [
+                    {
+                      id: 'call_list_concurrent',
+                      type: 'function',
+                      function: {
+                        name: 'getUserDevicesList',
+                        arguments: '{}'
+                      }
+                    },
+                    {
+                      id: 'call_feed_concurrent',
+                      type: 'function',
+                      function: {
+                        name: 'proposeFeedNow',
+                        arguments: JSON.stringify({ deviceId: 'feeder001', openDurationMs: 2000 })
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        };
+      } else {
+        finalPayloadSent = data.messages;
+        return {
+          data: {
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: 'Tôi đã hiểu và chỉ thực hiện lấy danh sách thiết bị trước.'
+                }
+              }
+            ]
+          }
+        };
+      }
+    };
+
     const res = await httpRequest(server, 'POST', '/v1/chatbot', {
       headers: { Authorization: `Bearer ${token}` },
       body: {
@@ -781,21 +900,156 @@ describe('Chatbot API Integration Tests', () => {
 
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.ok, true);
-    assert.equal(callCount, 2); // Loop runs twice due to correction
+    assert.equal(callCount, 2);
     
-    // Verify error tool response was sent back to AI in next loop
+    // Verify that the concurrent proposeFeedNow call was rejected and sent back as a workflow error
     assert.ok(finalPayloadSent);
-    const toolErrorMsg = finalPayloadSent[3]; // System + User + Assistant (missing deviceId) + Tool (error response)
-    assert.equal(toolErrorMsg.role, 'tool');
-    assert.equal(toolErrorMsg.tool_call_id, 'call_feed_missing_device');
-    const toolErrorContent = JSON.parse(toolErrorMsg.content);
-    assert.ok(toolErrorContent.error);
-    assert.ok(toolErrorContent.error.includes('Missing or invalid deviceId'));
+    
+    // Index 0: System
+    // Index 1: User (cho ăn 2s đi)
+    // Index 2: Assistant (concurrent calls)
+    // Index 3: Tool response for getUserDevicesList
+    // Index 4: Tool response for proposeFeedNow (should be workflow error)
+    const listToolResult = finalPayloadSent[3];
+    assert.equal(listToolResult.role, 'tool');
+    assert.equal(listToolResult.tool_call_id, 'call_list_concurrent');
+    
+    const feedToolResult = finalPayloadSent[4];
+    assert.equal(feedToolResult.role, 'tool');
+    assert.equal(feedToolResult.tool_call_id, 'call_feed_concurrent');
+    
+    const feedToolContent = JSON.parse(feedToolResult.content);
+    assert.ok(feedToolContent.error);
+    assert.ok(feedToolContent.error.includes('Violation of Strict Device Action Workflow'));
+  });
 
-    // Verify final response to client contains valid deviceId
-    assert.ok(res.body.message.tool_calls);
-    const parsedArgs = JSON.parse(res.body.message.tool_calls[0].function.arguments);
+  it('POST /v1/chatbot allows proposeFeedNow immediately in loop 1 if devices were checked in Turn 1', async () => {
+    mockChatMessages = []; // Reset history
+    const token = createAccessToken(mockUser);
+
+    // Turn 1: AI calls getUserDevicesList to discover devices
+    axios.post = async (url, data, config) => {
+      return {
+        data: {
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Tôi sẽ lấy danh sách máy.',
+                tool_calls: [
+                  {
+                    id: 'call_list_test_1',
+                    type: 'function',
+                    function: {
+                      name: 'getUserDevicesList',
+                      arguments: '{}'
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      };
+    };
+
+    const res1 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Xem danh sách thiết bị' }]
+      }
+    });
+    assert.equal(res1.statusCode, 200);
+
+    // Turn 2: AI proposes feeding with valid deviceId in loop 1 (no errors/corrections)
+    let callCount = 0;
+    axios.post = async (url, data, config) => {
+      callCount++;
+      return {
+        data: {
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Tôi đề xuất cho ăn.',
+                tool_calls: [
+                  {
+                    id: 'call_feed_valid_direct',
+                    type: 'function',
+                    function: {
+                      name: 'proposeFeedNow',
+                      arguments: JSON.stringify({ deviceId: 'feeder001', openDurationMs: 2000 })
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      };
+    };
+
+    const res2 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'cho ăn 2s đi' }]
+      }
+    });
+
+    assert.equal(res2.statusCode, 200);
+    assert.equal(res2.body.ok, true);
+    assert.equal(callCount, 1); // Loop runs exactly once (no correction, validated successfully in loop 1)
+    
+    // Verify tool_calls is returned to client (not stripped)
+    assert.ok(res2.body.message.tool_calls);
+    assert.equal(res2.body.message.tool_calls.length, 1);
+    assert.equal(res2.body.message.tool_calls[0].function.name, 'proposeFeedNow');
+    const parsedArgs = JSON.parse(res2.body.message.tool_calls[0].function.arguments);
     assert.equal(parsedArgs.deviceId, 'feeder001');
+  });
+
+  it('POST /v1/chatbot rejects proposeFeedNow and triggers workflow error when AI has not checked devices', async () => {
+    mockChatMessages = []; // Reset history
+    const token = createAccessToken(mockUser);
+
+    axios.post = async (url, data, config) => {
+      return {
+        data: {
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Tôi đề xuất cho ăn trực tiếp.',
+                tool_calls: [
+                  {
+                    id: 'call_feed_direct_violation',
+                    type: 'function',
+                    function: {
+                      name: 'proposeFeedNow',
+                      arguments: JSON.stringify({ deviceId: 'feeder001', openDurationMs: 2000 })
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      };
+    };
+
+    const res = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'cho ăn 2s đi' }]
+      }
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    
+    // Since AI violated workflow (proposing action without discovering devices first), 
+    // the invalid proposeFeedNow tool call must be sanitized and stripped from response.
+    assert.equal(res.body.message.tool_calls, undefined);
   });
 
   it('POST /v1/chatbot matches wiki keyword and passes to system prompt', async () => {
