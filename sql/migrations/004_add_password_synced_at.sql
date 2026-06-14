@@ -5,8 +5,8 @@
 -- Idempotent: chạy nhiều lần an toàn.
 
 ALTER TABLE device_mqtt_credentials
-  ADD COLUMN IF NOT EXISTS password_synced_at DATETIME NULL AFTER updated_at,
-  ADD INDEX IF NOT EXISTS idx_device_mqtt_credentials_synced_at (password_synced_at);
+  ADD COLUMN password_synced_at DATETIME NULL AFTER updated_at,
+  ADD INDEX idx_device_mqtt_credentials_synced_at (password_synced_at);
 
 -- Backfill: với credential cũ (đã tồn tại trước migration), set synced_at = NOW()
 -- để tránh re-sync toàn bộ. Sau đó chạy tool reconcile với --all nếu muốn.
