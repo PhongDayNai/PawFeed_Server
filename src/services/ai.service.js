@@ -107,6 +107,101 @@ export const CHATBOT_TOOLS = [
         required: ['petType', 'weightKg', 'activityLevel', 'ageGroup']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'getUserDashboardOverview',
+      description: 'Get the dashboard summary and overview of all pet feeder devices for the current user, including device counts, online/offline status, and recent feeding histories.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'getUserDevicesList',
+      description: 'Get the list of all registered pet feeder devices owned by the current user, including device IDs, display names, connection status (online/offline), and active config details.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'getUserDeviceDetail',
+      description: 'Get the detailed current status, network diagnostic metrics (RSSI, heap, uptime), and active configuration of a specific pet feeder device.',
+      parameters: {
+        type: 'object',
+        properties: {
+          deviceId: {
+            type: 'string',
+            description: 'The unique ID of the target device.'
+          }
+        },
+        required: ['deviceId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'proposeFeedNow',
+      description: 'Propose to immediately trigger a feeding command (feed once) on a specific device. This action requires user confirmation/approval on the UI before execution.',
+      parameters: {
+        type: 'object',
+        properties: {
+          deviceId: {
+            type: 'string',
+            description: 'The unique ID of the target device.'
+          },
+          openDurationMs: {
+            type: 'number',
+            description: 'The duration to open the food dispenser door in milliseconds (typically between 300 and 10000 ms).'
+          }
+        },
+        required: ['deviceId', 'openDurationMs']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'proposeSaveSchedule',
+      description: 'Propose to save/update the feeding schedule for a specific device. This action requires user review and confirmation on the UI before being saved.',
+      parameters: {
+        type: 'object',
+        properties: {
+          deviceId: {
+            type: 'string',
+            description: 'The unique ID of the target device.'
+          },
+          entries: {
+            type: 'array',
+            description: 'The list of schedule entries.',
+            items: {
+              type: 'object',
+              properties: {
+                time: {
+                  type: 'string',
+                  description: 'Time of day in 24-hour format (HH:mm, e.g., "08:30").'
+                },
+                openDurationMs: {
+                  type: 'number',
+                  description: 'Dispenser opening duration in milliseconds (between 300 and 10000 ms).'
+                }
+              },
+              required: ['time', 'openDurationMs']
+            }
+          }
+        },
+        required: ['deviceId', 'entries']
+      }
+    }
   }
 ];
 
@@ -149,7 +244,45 @@ export async function getChatCompletion({ messages, model, temperature, maxToken
       throw new Error('Invalid response structure from AI server.');
     }
 
-    return choice.message;
+    const message = choice.message;
+
+    // Fallback: If tool_calls is not populated but content contains a JSON block with tool_calls
+    if ((!message.tool_calls || message.tool_calls.length === 0) && message.content) {
+      const jsonRegex = /```json\s*([\s\S]*?)\s*```/g;
+      const match = jsonRegex.exec(message.content);
+      const jsonText = match ? match[1] : message.content.trim();
+      
+      try {
+        const parsed = JSON.parse(jsonText);
+        if (parsed && Array.isArray(parsed.tool_calls)) {
+          message.tool_calls = parsed.tool_calls.map(tc => {
+            if (tc.function && typeof tc.function.arguments === 'object') {
+              return {
+                ...tc,
+                function: {
+                  ...tc.function,
+                  arguments: JSON.stringify(tc.function.arguments)
+                }
+              };
+            }
+            return tc;
+          });
+          
+          if (parsed.content !== undefined) {
+            message.content = parsed.content;
+          } else {
+            message.content = message.content.replace(/```json[\s\S]*?```/g, '').trim();
+            if (message.content === '') {
+              message.content = null;
+            }
+          }
+        }
+      } catch (e) {
+        // Not a valid JSON or tool call structure, ignore
+      }
+    }
+
+    return message;
   } catch (error) {
     let message = 'Failed to communicate with AI server.';
     let statusCode = 502; // Bad Gateway
