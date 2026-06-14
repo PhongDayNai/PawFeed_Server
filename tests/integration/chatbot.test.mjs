@@ -696,6 +696,92 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(mockChatMessages[1].content, 'Dựa trên tính toán, thời gian chạy motor khoảng 12 giây, tốc độ dòng chảy thực tế là 4.5 g/s và nhu cầu ăn hàng ngày của mèo là 81g.');
   });
 
+  it('POST /v1/chatbot detects missing deviceId in proposeFeedNow and forces AI self-correction', async () => {
+    mockChatMessages = []; // Reset history
+    const token = createAccessToken(mockUser);
+
+    let callCount = 0;
+    let finalPayloadSent = null;
+
+    axios.post = async (url, data, config) => {
+      callCount++;
+      if (callCount === 1) {
+        // AI returns proposeFeedNow tool call but MISSING deviceId
+        return {
+          data: {
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: 'Tôi sẽ đề xuất cho ăn.',
+                  tool_calls: [
+                    {
+                      id: 'call_feed_missing_device',
+                      type: 'function',
+                      function: {
+                        name: 'proposeFeedNow',
+                        arguments: JSON.stringify({ openDurationMs: 2000 }) // missing deviceId!
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        };
+      } else {
+        finalPayloadSent = data.messages;
+        return {
+          data: {
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: 'Tôi đã sửa lại và đề xuất cho ăn thành công.',
+                  tool_calls: [
+                    {
+                      id: 'call_feed_fixed_device',
+                      type: 'function',
+                      function: {
+                        name: 'proposeFeedNow',
+                        arguments: JSON.stringify({ deviceId: 'feeder001', openDurationMs: 2000 })
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        };
+      }
+    };
+
+    const res = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'cho ăn 2s đi' }]
+      }
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(callCount, 2); // Loop runs twice due to correction
+    
+    // Verify error tool response was sent back to AI in next loop
+    assert.ok(finalPayloadSent);
+    const toolErrorMsg = finalPayloadSent[3]; // System + User + Assistant (missing deviceId) + Tool (error response)
+    assert.equal(toolErrorMsg.role, 'tool');
+    assert.equal(toolErrorMsg.tool_call_id, 'call_feed_missing_device');
+    const toolErrorContent = JSON.parse(toolErrorMsg.content);
+    assert.ok(toolErrorContent.error);
+    assert.ok(toolErrorContent.error.includes('Missing or invalid deviceId'));
+
+    // Verify final response to client contains valid deviceId
+    assert.ok(res.body.message.tool_calls);
+    const parsedArgs = JSON.parse(res.body.message.tool_calls[0].function.arguments);
+    assert.equal(parsedArgs.deviceId, 'feeder001');
+  });
+
   it('POST /v1/chatbot matches wiki keyword and passes to system prompt', async () => {
     mockChatMessages = []; // Reset history
     let sentSystemPrompt = null;

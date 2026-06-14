@@ -80,6 +80,60 @@ async function resolveActiveSessionId(userId, lastMessage, timeoutSec, maxMessag
   return null;
 }
 
+/**
+ * Validates the arguments of interactive tool calls.
+ * Returns null if valid, or a string describing the validation error if invalid.
+ * @param {string} functionName
+ * @param {Object} args
+ * @returns {string|null} Error message or null if valid
+ */
+function validateInteractiveToolArgs(functionName, args) {
+  const deviceId = args.deviceId;
+  if (!deviceId || typeof deviceId !== 'string' || deviceId.trim() === '') {
+    return "Missing or invalid deviceId. You must call getUserDevicesList first to retrieve the user's registered devices and select the correct deviceId. Do not guess or assume a deviceId.";
+  }
+
+  if (functionName === 'proposeFeedNow') {
+    const openDurationMs = args.openDurationMs;
+    if (openDurationMs === undefined || openDurationMs === null || typeof openDurationMs !== 'number') {
+      return "Missing or invalid openDurationMs. It must be a valid number representing milliseconds (between 300 and 10000 ms).";
+    }
+    if (openDurationMs < 300 || openDurationMs > 10000) {
+      return `Invalid openDurationMs: ${openDurationMs}. The duration must be between 300 ms (0.3 seconds) and 10000 ms (10 seconds).`;
+    }
+  }
+
+  if (functionName === 'proposeSaveSchedule') {
+    const entries = args.entries;
+    if (!entries || !Array.isArray(entries) || entries.length === 0) {
+      return "Missing or invalid entries. It must be a non-empty array of schedule entries containing time and openDurationMs.";
+    }
+
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      if (!entry || typeof entry !== 'object') {
+        return `Invalid schedule entry at index ${i}.`;
+      }
+      
+      const time = entry.time;
+      if (!time || typeof time !== 'string' || !timeRegex.test(time)) {
+        return `Invalid or missing time at entry index ${i}. Time must be in 24-hour format HH:mm (e.g., "08:30" or "14:15").`;
+      }
+
+      const openDurationMs = entry.openDurationMs;
+      if (openDurationMs === undefined || openDurationMs === null || typeof openDurationMs !== 'number') {
+        return `Missing or invalid openDurationMs at entry index ${i}. It must be a valid number representing milliseconds (between 300 and 10000 ms).`;
+      }
+      if (openDurationMs < 300 || openDurationMs > 10000) {
+        return `Invalid openDurationMs at entry index ${i}: ${openDurationMs}. The duration must be between 300 ms (0.3 seconds) and 10000 ms (10 seconds).`;
+      }
+    }
+  }
+
+  return null;
+}
+
 export const NOMI_SYSTEM_PROMPT_PREFIX = `You are Nomi, a warm, friendly, and highly knowledgeable pet care assistant for the PawFeed automatic pet feeder application.
 
 Your core capabilities and responsibilities include:
@@ -288,7 +342,23 @@ export async function askChatbot(req, res) {
         tc.function.name === 'proposeFeedNow' || tc.function.name === 'proposeSaveSchedule'
       );
 
+      let hasInvalidInteractiveTool = false;
       if (hasInteractiveTool) {
+        hasInvalidInteractiveTool = aiResponse.tool_calls.some(tc => {
+          if (tc.function.name === 'proposeFeedNow' || tc.function.name === 'proposeSaveSchedule') {
+            try {
+              const args = JSON.parse(tc.function.arguments || '{}');
+              const error = validateInteractiveToolArgs(tc.function.name, args);
+              return error !== null;
+            } catch (e) {
+              return true;
+            }
+          }
+          return false;
+        });
+      }
+
+      if (hasInteractiveTool && !hasInvalidInteractiveTool) {
         // Break out of the loop so we return the tool_calls to the client immediately for UI approval
         break;
       }
@@ -307,7 +377,16 @@ export async function askChatbot(req, res) {
 
         let toolResult;
         try {
-          if (functionName === 'calculateMotorRunTime') {
+          if (functionName === 'proposeFeedNow' || functionName === 'proposeSaveSchedule') {
+            const error = validateInteractiveToolArgs(functionName, functionArgs);
+            if (error) {
+              toolResult = { error };
+            } else {
+              toolResult = {
+                status: "waiting_for_missing_information_in_other_calls"
+              };
+            }
+          } else if (functionName === 'calculateMotorRunTime') {
             toolResult = runCalculateMotorRunTime(functionArgs);
           } else if (functionName === 'calculateFlowRate') {
             toolResult = runCalculateFlowRate(functionArgs);
@@ -352,6 +431,26 @@ export async function askChatbot(req, res) {
 
   // 6. Save the assistant's response
   if (currentResponse?.content || (currentResponse?.tool_calls && currentResponse.tool_calls.length > 0)) {
+    // Sanitize tool_calls before saving and sending to client (remove invalid interactive tools)
+    if (currentResponse.tool_calls && currentResponse.tool_calls.length > 0) {
+      const hasInvalidInteractiveTool = currentResponse.tool_calls.some(tc => {
+        if (tc.function.name === 'proposeFeedNow' || tc.function.name === 'proposeSaveSchedule') {
+          try {
+            const args = JSON.parse(tc.function.arguments || '{}');
+            const error = validateInteractiveToolArgs(tc.function.name, args);
+            return error !== null;
+          } catch (e) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (hasInvalidInteractiveTool) {
+        currentResponse.tool_calls = undefined;
+      }
+    }
+
     let contentToSave = currentResponse.content || '';
     if (currentResponse.tool_calls && currentResponse.tool_calls.length > 0) {
       const formattedToolCalls = currentResponse.tool_calls.map(tc => {
