@@ -139,5 +139,11 @@ export const env = {
     demoDeviceSecret: process.env.SEED_DEMO_DEVICE_SECRET || 'CHANGE_ME_DEVICE_SECRET',
     demoMqttUsername: process.env.SEED_DEMO_MQTT_USERNAME || 'feeder001',
     demoMqttPassword: process.env.SEED_DEMO_MQTT_PASSWORD || 'feeder001_dev_password'
+  },
+
+  ai: {
+    baseUrl: process.env.AI_BASE_URL || 'https://openai-api.phongdaynai.id.vn/v1',
+    apiKey: process.env.AI_API_KEY || '',
+    model: process.env.AI_MODEL || 'gpt-3.5-turbo'
   }
 };

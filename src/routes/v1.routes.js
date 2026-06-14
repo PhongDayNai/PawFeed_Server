@@ -6,6 +6,7 @@ import dashboardRoutes from './dashboard.routes.js';
 import deviceRoutes from './device.routes.js';
 import adminRoutes from './admin.routes.js';
 import sseRoutes from './sse.routes.js';
+import chatbotRoutes from './chatbot.routes.js';
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use('/dashboard', dashboardRoutes);
 router.use('/devices', deviceRoutes);
 router.use('/admin', adminRoutes);
 router.use('/events', sseRoutes);
+router.use('/chatbot', chatbotRoutes);
 
 export default router;
