@@ -249,6 +249,106 @@ export const CHATBOT_TOOLS = [
         required: ['entityName', 'key']
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'getUserDeviceEvents',
+      description: 'Get a paginated list of system and hardware events/logs for a specific pet feeder device (e.g. telemetry, online status, configuration apply events).',
+      parameters: {
+        type: 'object',
+        properties: {
+          deviceId: {
+            type: 'string',
+            description: 'The unique ID of the target device.'
+          },
+          eventType: {
+            type: 'string',
+            description: 'Filter events by type (e.g., "telemetry", "config_apply", "wifi_connected").'
+          },
+          source: {
+            type: 'string',
+            description: 'Filter events by source (e.g., "device", "server").'
+          },
+          requestId: {
+            type: 'string',
+            description: 'Filter events by associated request ID.'
+          },
+          configId: {
+            type: 'string',
+            description: 'Filter events by associated configuration ID.'
+          },
+          page: {
+            type: 'number',
+            description: 'Page number for pagination.'
+          },
+          pageSize: {
+            type: 'number',
+            description: 'Number of events per page.'
+          },
+          from: {
+            type: 'string',
+            description: 'ISO 8601 date string to filter events starting from this date.'
+          },
+          to: {
+            type: 'string',
+            description: 'ISO 8601 date string to filter events up to this date.'
+          }
+        },
+        required: ['deviceId']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'getUserFeedingHistory',
+      description: 'Get a paginated list of feeding history records for a specific pet feeder device, showing when feedings started/finished, their status (completed, failed, etc.), and duration.',
+      parameters: {
+        type: 'object',
+        properties: {
+          deviceId: {
+            type: 'string',
+            description: 'The unique ID of the target device.'
+          },
+          source: {
+            type: 'string',
+            enum: ['remote', 'schedule', 'manual', 'test'],
+            description: 'Filter by source: "remote", "schedule", "manual", or "test".'
+          },
+          status: {
+            type: 'string',
+            enum: ['completed', 'failed', 'timeout', 'cancelled'],
+            description: 'Filter by status: "completed", "failed", "timeout", or "cancelled".'
+          },
+          requestId: {
+            type: 'string',
+            description: 'Filter feeding history by associated request ID.'
+          },
+          scheduleId: {
+            type: 'number',
+            description: 'Filter feeding history by associated schedule ID.'
+          },
+          page: {
+            type: 'number',
+            description: 'Page number for pagination.'
+          },
+          pageSize: {
+            type: 'number',
+            description: 'Number of history entries per page.'
+          },
+          from: {
+            type: 'string',
+            description: 'ISO 8601 date string to filter entries starting from this date.'
+          },
+          to: {
+            type: 'string',
+            description: 'ISO 8601 date string to filter entries up to this date.'
+          }
+        },
+        required: ['deviceId']
+      }
+    }
   }
 ];
 

@@ -14,6 +14,7 @@ import {
 import { sendSuccess } from '../utils/response.js';
 import { getUserDashboard } from '../services/dashboard.service.js';
 import { listUserDevices, getUserDevice, getUserDeviceStatus } from '../services/device.service.js';
+import { listUserDeviceEvents, listUserFeedingHistory } from '../services/operationLog.service.js';
 
 export const CHATBOT_GREETINGS = [
   "Chào bạn! Tôi là Nomi, trợ lý chăm sóc thú cưng PawFeed. Rất vui được hỗ trợ bạn hôm nay! Bé cưng của bạn thế nào rồi? 🐾",
@@ -180,7 +181,7 @@ Your core capabilities and responsibilities include:
 1. Feeder & Device Support: Help users configure, operate, and troubleshoot their PawFeed automatic pet feeders.
 2. Pet Nutrition & Feeding Schedules: Advise on feeding frequencies, appropriate portion sizes, and diet plans based on the pet's age, weight, and breed. Always encourage users to consult a professional veterinarian for specific medical concerns.
 3. Portion Weight & Daily Energy Calculations: Use your calculation tools (functions) to calculate daily food requirements, flow rates, and feeding durations. These tools are available to help you perform precise calculations for the user.
-4. Device Status and Reporting: Use your tools (getUserDashboardOverview, getUserDevicesList, getUserDeviceDetail) to fetch and report real-time device status, connection diagnostics, or general dashboard summary when the user asks about their feeders. You MUST call these tools to obtain actual information instead of fabricating or asking the user if you can retrieve it yourself.
+4. Device Status, Logs and Reporting: Use your tools (getUserDashboardOverview, getUserDevicesList, getUserDeviceDetail, getUserDeviceEvents, getUserFeedingHistory) to fetch and report real-time device status, connection diagnostics, general dashboard summary, detailed device/system events, or full feeding histories when the user asks about their feeders or their logs/activities. You MUST call these tools to obtain actual information instead of fabricating or asking the user if you can retrieve it yourself.
 5. Feeding Control & Scheduling: Use proposeFeedNow to propose triggering an immediate feed command or proposeSaveSchedule to propose saving/updating a schedule. If the user does not specify a device ID, you should first call getUserDevicesList to see if they have registered devices, and use the device ID if there is only one device, or ask the user to clarify if there are multiple.`;
 
 export const NOMI_SYSTEM_PROMPT_SUFFIX = `Strict constraints you must follow:
@@ -358,6 +359,12 @@ export async function askChatbot(req, res) {
             const deviceDetail = await getUserDevice(deviceId, userId);
             const deviceStatus = await getUserDeviceStatus(deviceId, userId);
             toolResult = { device: deviceDetail, status: deviceStatus };
+          } else if (functionName === 'getUserDeviceEvents') {
+            const { deviceId, ...query } = functionArgs;
+            toolResult = await listUserDeviceEvents(deviceId, userId, query);
+          } else if (functionName === 'getUserFeedingHistory') {
+            const { deviceId, ...query } = functionArgs;
+            toolResult = await listUserFeedingHistory(deviceId, userId, query);
           } else if (functionName === 'updateUserMemory') {
             const { entityName, key, value } = functionArgs;
             toolResult = await saveUserMemory(userId, { entityName, key, value });
