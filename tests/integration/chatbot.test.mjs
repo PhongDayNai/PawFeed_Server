@@ -249,6 +249,67 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(res.body.history[1].content, 'Hi there!');
   });
 
+  it('POST /v1/chatbot/init without auth returns 401', async () => {
+    const res = await httpRequest(server, 'POST', '/v1/chatbot/init');
+    assert.equal(res.statusCode, 401);
+    assert.equal(res.body.ok, false);
+    assert.equal(res.body.error.code, 'MISSING_BEARER_TOKEN');
+  });
+
+  it('POST /v1/chatbot/init with auth handles session initialization and greeting logic', async () => {
+    mockChatMessages = []; // Reset history
+    const token = createAccessToken(mockUser);
+
+    // Call 1: Empty DB -> should create a new session and return greeting
+    const res1 = await httpRequest(server, 'POST', '/v1/chatbot/init', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    assert.equal(res1.statusCode, 200);
+    assert.equal(res1.body.ok, true);
+    assert.equal(res1.body.isNewSession, true);
+    assert.ok(res1.body.sessionId);
+    assert.ok(res1.body.greeting);
+
+    // Verify database has 1 greeting assistant message saved
+    assert.equal(mockChatMessages.length, 1);
+    assert.equal(mockChatMessages[0].role, 'assistant');
+    assert.equal(mockChatMessages[0].content, res1.body.greeting);
+    const sessionId1 = res1.body.sessionId;
+    assert.equal(mockChatMessages[0].session_id, sessionId1);
+
+    // Call 2: Within timeout -> should NOT create a new session and no greeting returned
+    mockChatMessages[0].created_at = new Date();
+
+    const res2 = await httpRequest(server, 'POST', '/v1/chatbot/init', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    assert.equal(res2.statusCode, 200);
+    assert.equal(res2.body.ok, true);
+    assert.equal(res2.body.isNewSession, false);
+    assert.equal(res2.body.sessionId, sessionId1);
+    assert.equal(res2.body.greeting, undefined);
+    assert.equal(mockChatMessages.length, 1); // No new message saved
+
+    // Call 3: Exceeds timeout -> should create a new session and return greeting
+    mockChatMessages[0].created_at = new Date(Date.now() - 4000 * 1000);
+
+    const res3 = await httpRequest(server, 'POST', '/v1/chatbot/init', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    assert.equal(res3.statusCode, 200);
+    assert.equal(res3.body.ok, true);
+    assert.equal(res3.body.isNewSession, true);
+    assert.ok(res3.body.sessionId);
+    assert.notEqual(res3.body.sessionId, sessionId1);
+    assert.ok(res3.body.greeting);
+    
+    // Verify database has 2 messages now (the new greeting assistant message is saved)
+    assert.equal(mockChatMessages.length, 2);
+    assert.equal(mockChatMessages[1].role, 'assistant');
+    assert.equal(mockChatMessages[1].content, res3.body.greeting);
+    assert.equal(mockChatMessages[1].session_id, res3.body.sessionId);
+  });
+
   it('implements time-based session auto-splitting and uses only active session history for AI context', async () => {
     mockChatMessages = []; // Reset history
 

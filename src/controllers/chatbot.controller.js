@@ -107,3 +107,54 @@ export async function getChatHistory(req, res) {
     history
   });
 }
+
+/**
+ * Initializes chatbot session for the user when opening chat.
+ * Generates and saves a warm greeting if it's a new session, or returns the existing session id.
+ */
+export async function initChatbotSession(req, res) {
+  const userId = req.auth.userId;
+  const lastMessage = await getLastChatMessage(userId);
+  const timeoutSec = env.ai.chatbotSessionTimeoutSec;
+
+  let sessionId;
+  let isNewSession = false;
+  let greetingText = '';
+
+  if (lastMessage && lastMessage.created_at) {
+    const elapsedSec = (Date.now() - new Date(lastMessage.created_at).getTime()) / 1000;
+    if (elapsedSec < timeoutSec) {
+      sessionId = lastMessage.session_id;
+    }
+  }
+
+  if (!sessionId) {
+    sessionId = crypto.randomUUID();
+    isNewSession = true;
+
+    // Pick a random greeting message for Nomi
+    const greetings = [
+      "Chào bạn! Tôi là Nomi, trợ lý chăm sóc thú cưng PawFeed. Rất vui được hỗ trợ bạn hôm nay! Bé cưng của bạn thế nào rồi? 🐾",
+      "Xin chào! Nomi đây. 🐶 Hôm nay bạn cần tôi hỗ trợ cấu hình lịch ăn hay tính toán lượng hạt cho bé cưng không?",
+      "Chào mừng bạn quay trở lại! 🐱 Tôi là Nomi, trợ lý PawFeed của bạn. Hãy nói cho tôi biết nếu bạn cần giúp đỡ với máy cho ăn nhé!",
+      "Hi! Nomi đã sẵn sàng giúp bạn rồi đây. 🐾 Bạn muốn tìm hiểu cách calibrate (kiểm định) máy hay lên lịch ăn cho bé cưng hôm nay?",
+      "Chào bạn! Nomi rất vui được gặp lại bạn. Hôm nay bé cưng của bạn có ăn uống ngon miệng không? Cần tôi hỗ trợ gì về máy cho ăn cứ bảo nhé! 😊"
+    ];
+    greetingText = greetings[Math.floor(Math.random() * greetings.length)];
+
+    // Save the greeting as an assistant message in the DB
+    await saveChatMessage({
+      userId,
+      role: 'assistant',
+      content: greetingText,
+      model: resolveModelName(null),
+      sessionId
+    });
+  }
+
+  return sendSuccess(res, {
+    isNewSession,
+    sessionId,
+    ...(isNewSession ? { greeting: greetingText } : {})
+  });
+}
