@@ -6,6 +6,64 @@ import { sendSuccess } from '../utils/response.js';
 import { getUserDashboard } from '../services/dashboard.service.js';
 import { listUserDevices, getUserDevice, getUserDeviceStatus } from '../services/device.service.js';
 
+export const CHATBOT_GREETINGS = [
+  "Chào bạn! Tôi là Nomi, trợ lý chăm sóc thú cưng PawFeed. Rất vui được hỗ trợ bạn hôm nay! Bé cưng của bạn thế nào rồi? 🐾",
+  "Xin chào! Nomi đây. 🐶 Hôm nay bạn cần tôi hỗ trợ cấu hình lịch ăn hay tính toán lượng hạt cho bé cưng không?",
+  "Chào mừng bạn quay trở lại! 🐱 Tôi là Nomi, trợ lý PawFeed của bạn. Hãy nói cho tôi biết nếu bạn cần giúp đỡ với máy cho ăn nhé!",
+  "Hi! Nomi đã sẵn sàng giúp bạn rồi đây. 🐾 Bạn muốn tìm hiểu cách calibrate (kiểm định) máy hay lên lịch ăn cho bé cưng hôm nay?",
+  "Chào bạn! Nomi rất vui được gặp lại bạn. Hôm nay bé cưng của bạn có ăn uống ngon miệng không? Cần tôi hỗ trợ gì về máy cho ăn cứ bảo nhé! 😊",
+  "Chào bạn nhé! Nomi 🐾 đã sẵn sàng. Bạn muốn kiểm tra trạng thái thiết bị hay tính toán khẩu phần ăn hôm nay?",
+  "Xin chào! Lại là Nomi đây. 🐱 Hôm nay bé cưng nhà bạn đã ăn mấy bữa rồi? Có cần mình điều chỉnh lịch ăn gì không?",
+  "Chào bạn, Nomi chúc bạn một ngày vui vẻ bên bé cưng! 🐶 Hôm nay bạn có muốn thực hiện lệnh cho ăn ngay không?",
+  "Hi there! Trợ lý Nomi đã online rồi. 🐾 Hôm nay bạn cần mình giải đáp thắc mắc gì về dòng máy PawFeed V4 thế này?",
+  "Chào bạn! Rất vui được gặp lại bạn. Bé cưng của bạn hôm nay khỏe không? Mình có thể giúp gì cho bữa ăn của bé hôm nay? 🐾",
+  "Xin chào! Nomi 🐶 luôn sẵn sàng hỗ trợ bạn cấu hình máy và lên thực đơn dinh dưỡng tốt nhất cho bé cưng.",
+  "Chào bạn quay trở lại với PawFeed! 🐾 Nomi có thể giúp bạn kiểm tra xem thiết bị nào đang online hôm nay không?",
+  "Chào bạn! Hôm nay Nomi 🐱 có thể hỗ trợ bạn tính toán lượng calo cần thiết hay thời gian chạy motor cho máy cho ăn không?",
+  "Hello! Nomi đây. 🐾 Bạn có muốn cùng mình thiết lập một lịch trình cho ăn khoa học hơn cho bé cưng hôm nay không?",
+  "Chào bạn! Chúc bé cưng nhà bạn có một ngày tràn đầy năng lượng. 🐶 Bạn cần Nomi hỗ trợ thao tác gì trên máy hôm nay?",
+  "Xin chào! Nomi 🐾 đã có mặt để đồng hành cùng bạn chăm sóc bé cưng. Thiết bị của bạn hoạt động ổn định chứ?",
+  "Chào bạn! Bạn cần Nomi hướng dẫn cách kết nối Wi-Fi hay nạp cấu hình mới cho máy feeder không? 🐾",
+  "Hi! Hôm nay Nomi 🐱 sẽ giúp bạn tối ưu hóa lượng thức ăn cho bé cưng. Bạn muốn bắt đầu tính toán hay đặt lịch ăn?",
+  "Chào bạn! Nomi rất vui được hỗ trợ bạn. Bé cưng của bạn là mèo hay chó? Cần tính lượng hạt cứ nhắn Nomi nhé! 🐶🐱",
+  "Xin chào! Nomi 🐾 luôn ở đây để giúp bé cưng của bạn không bao giờ bị đói. Hôm nay bạn cần trợ giúp gì nào?"
+];
+
+
+/**
+ * Resolves the active session ID for a user.
+ * If elapsed time exceeds timeout, but the session has only the chatbot greeting message,
+ * we still reuse the session instead of starting a new one.
+ * @param {number} userId
+ * @param {Object|null} lastMessage Last chat message
+ * @param {number} timeoutSec Session timeout in seconds
+ * @returns {Promise<string|null>} Active session ID or null
+ */
+async function resolveActiveSessionId(userId, lastMessage, timeoutSec) {
+  if (!lastMessage || !lastMessage.created_at) {
+    return null;
+  }
+
+  const elapsedSec = (Date.now() - new Date(lastMessage.created_at).getTime()) / 1000;
+  if (elapsedSec < timeoutSec) {
+    return lastMessage.session_id;
+  }
+
+  // Check if the only message in the last session is a chatbot greeting
+  const sessionHistory = await getSessionChatHistory(userId, lastMessage.session_id);
+  if (sessionHistory.length === 1) {
+    const oldestMessage = sessionHistory[0];
+    const isGreeting = oldestMessage &&
+      oldestMessage.role === 'assistant' &&
+      CHATBOT_GREETINGS.includes(oldestMessage.content);
+    if (isGreeting) {
+      return lastMessage.session_id;
+    }
+  }
+
+  return null;
+}
+
 export const NOMI_SYSTEM_PROMPT_PREFIX = `You are Nomi, a warm, friendly, and highly knowledgeable pet care assistant for the PawFeed automatic pet feeder application.
 
 Your core capabilities and responsibilities include:
@@ -129,16 +187,9 @@ export async function askChatbot(req, res) {
   const resolvedModel = resolveModelName(model);
 
   // 2. Determine active session_id based on time elapsed since the last message
-  let sessionId;
   const lastMessage = await getLastChatMessage(userId);
   const timeoutSec = env.ai.chatbotSessionTimeoutSec;
-
-  if (lastMessage && lastMessage.created_at) {
-    const elapsedSec = (Date.now() - new Date(lastMessage.created_at).getTime()) / 1000;
-    if (elapsedSec < timeoutSec) {
-      sessionId = lastMessage.session_id;
-    }
-  }
+  let sessionId = await resolveActiveSessionId(userId, lastMessage, timeoutSec);
 
   if (!sessionId) {
     sessionId = crypto.randomUUID();
@@ -319,30 +370,16 @@ export async function initChatbotSession(req, res) {
   const lastMessage = await getLastChatMessage(userId);
   const timeoutSec = env.ai.chatbotSessionTimeoutSec;
 
-  let sessionId;
+  let sessionId = await resolveActiveSessionId(userId, lastMessage, timeoutSec);
   let isNewSession = false;
   let greetingText = '';
-
-  if (lastMessage && lastMessage.created_at) {
-    const elapsedSec = (Date.now() - new Date(lastMessage.created_at).getTime()) / 1000;
-    if (elapsedSec < timeoutSec) {
-      sessionId = lastMessage.session_id;
-    }
-  }
 
   if (!sessionId) {
     sessionId = crypto.randomUUID();
     isNewSession = true;
 
     // Pick a random greeting message for Nomi
-    const greetings = [
-      "Chào bạn! Tôi là Nomi, trợ lý chăm sóc thú cưng PawFeed. Rất vui được hỗ trợ bạn hôm nay! Bé cưng của bạn thế nào rồi? 🐾",
-      "Xin chào! Nomi đây. 🐶 Hôm nay bạn cần tôi hỗ trợ cấu hình lịch ăn hay tính toán lượng hạt cho bé cưng không?",
-      "Chào mừng bạn quay trở lại! 🐱 Tôi là Nomi, trợ lý PawFeed của bạn. Hãy nói cho tôi biết nếu bạn cần giúp đỡ với máy cho ăn nhé!",
-      "Hi! Nomi đã sẵn sàng giúp bạn rồi đây. 🐾 Bạn muốn tìm hiểu cách calibrate (kiểm định) máy hay lên lịch ăn cho bé cưng hôm nay?",
-      "Chào bạn! Nomi rất vui được gặp lại bạn. Hôm nay bé cưng của bạn có ăn uống ngon miệng không? Cần tôi hỗ trợ gì về máy cho ăn cứ bảo nhé! 😊"
-    ];
-    greetingText = greetings[Math.floor(Math.random() * greetings.length)];
+    greetingText = CHATBOT_GREETINGS[Math.floor(Math.random() * CHATBOT_GREETINGS.length)];
 
     // Save the greeting as an assistant message in the DB
     await saveChatMessage({

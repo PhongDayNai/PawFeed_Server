@@ -382,7 +382,7 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(res2.body.greeting, undefined);
     assert.equal(mockChatMessages.length, 1); // No new message saved
 
-    // Call 3: Exceeds timeout -> should create a new session and return greeting
+    // Call 3: Exceeds timeout but the only message is a greeting -> should NOT create a new session, but reuse the existing one
     mockChatMessages[0].created_at = new Date(Date.now() - 4000 * 1000);
 
     const res3 = await httpRequest(server, 'POST', '/v1/chatbot/init', {
@@ -390,16 +390,38 @@ describe('Chatbot API Integration Tests', () => {
     });
     assert.equal(res3.statusCode, 200);
     assert.equal(res3.body.ok, true);
-    assert.equal(res3.body.isNewSession, true);
-    assert.ok(res3.body.sessionId);
-    assert.notEqual(res3.body.sessionId, sessionId1);
-    assert.ok(res3.body.greeting);
-    
-    // Verify database has 2 messages now (the new greeting assistant message is saved)
-    assert.equal(mockChatMessages.length, 2);
-    assert.equal(mockChatMessages[1].role, 'assistant');
-    assert.equal(mockChatMessages[1].content, res3.body.greeting);
-    assert.equal(mockChatMessages[1].session_id, res3.body.sessionId);
+    assert.equal(res3.body.isNewSession, false);
+    assert.equal(res3.body.sessionId, sessionId1);
+    assert.equal(res3.body.greeting, undefined);
+    assert.equal(mockChatMessages.length, 1); // No new message saved
+
+    // Call 4: Add a user message to make the session have more than just a greeting
+    mockChatMessages.push({
+      id: mockChatMessages.length + 1,
+      user_id: mockUser.id,
+      session_id: sessionId1,
+      role: 'user',
+      content: 'Hello Nomi',
+      model: 'gemma-4-e4b',
+      created_at: new Date(Date.now() - 4000 * 1000)
+    });
+
+    // Call 5: Exceeds timeout and has a user message -> should create a new session and return greeting
+    const res5 = await httpRequest(server, 'POST', '/v1/chatbot/init', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    assert.equal(res5.statusCode, 200);
+    assert.equal(res5.body.ok, true);
+    assert.equal(res5.body.isNewSession, true);
+    assert.ok(res5.body.sessionId);
+    assert.notEqual(res5.body.sessionId, sessionId1);
+    assert.ok(res5.body.greeting);
+
+    // Verify database has 3 messages now (greeting, user message, new greeting message)
+    assert.equal(mockChatMessages.length, 3);
+    assert.equal(mockChatMessages[2].role, 'assistant');
+    assert.equal(mockChatMessages[2].content, res5.body.greeting);
+    assert.equal(mockChatMessages[2].session_id, res5.body.sessionId);
   });
 
   it('implements time-based session auto-splitting and uses only active session history for AI context', async () => {
