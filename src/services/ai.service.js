@@ -6,7 +6,7 @@ const MODEL_MAPPING = {
   'gemma-4-e4b': 'gemma-4-E4B-it-uncensored-heretic-Q4_K_M.gguf'
 };
 
-function resolveModelName(modelName) {
+export function resolveModelName(modelName) {
   if (!modelName) {
     return env.ai.model;
   }
@@ -48,7 +48,7 @@ export async function getChatCompletion({ messages, model, temperature, maxToken
   };
 
   try {
-    const response = await axios.post(url, payload, { headers, timeout: 30000 });
+    const response = await axios.post(url, payload, { headers, timeout: 120000 });
     
     const choice = response.data?.choices?.[0];
     if (!choice || !choice.message) {

@@ -50,6 +50,8 @@ describe('Chatbot API Integration Tests', () => {
     is_disabled: 0
   };
 
+  let mockChatMessages = [];
+
   it('setup server and mock db/axios', async () => {
     server = http.createServer(app);
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -60,6 +62,21 @@ describe('Chatbot API Integration Tests', () => {
     pool.execute = async (sql, params) => {
       if (sql.includes('users') && sql.includes('id = ?')) {
         return [[mockUser]];
+      }
+      if (sql.includes('INSERT INTO chatbot_messages')) {
+        mockChatMessages.push({
+          id: mockChatMessages.length + 1,
+          user_id: params[0],
+          role: params[1],
+          content: params[2],
+          model: params[3],
+          created_at: new Date()
+        });
+        return [{ insertId: mockChatMessages.length }];
+      }
+      if (sql.includes('FROM chatbot_messages')) {
+        // Simple mock implementation of getUserChatHistory sorting by id ASC
+        return [mockChatMessages];
       }
       return [[]];
     };
@@ -92,11 +109,14 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(res.body.error.code, 'INVALID_BODY');
   });
 
-  it('POST /v1/chatbot with auth and valid body returns 200 with chatbot response', async () => {
+  it('POST /v1/chatbot with auth and valid body returns 200 and stores history', async () => {
+    mockChatMessages = []; // Reset history
+    
     // Setup mock response for axios
     axios.post = async (url, data, config) => {
       assert.ok(url.includes('/chat/completions'));
-      assert.equal(data.messages[0].content, 'Hello AI');
+      assert.equal(data.messages[0].role, 'system');
+      assert.equal(data.messages[1].content, 'Hello AI');
       return {
         data: {
           choices: [
@@ -123,9 +143,17 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(res.body.ok, true);
     assert.equal(res.body.message.role, 'assistant');
     assert.equal(res.body.message.content, 'Hello Human! I am your pet feeding assistant.');
+
+    // Verify history contains 2 messages (user question + assistant answer)
+    assert.equal(mockChatMessages.length, 2);
+    assert.equal(mockChatMessages[0].role, 'user');
+    assert.equal(mockChatMessages[0].content, 'Hello AI');
+    assert.equal(mockChatMessages[1].role, 'assistant');
+    assert.equal(mockChatMessages[1].content, 'Hello Human! I am your pet feeding assistant.');
   });
 
-  it('POST /v1/chatbot maps short model name to full model name', async () => {
+  it('POST /v1/chatbot maps short model name to full model name and saves to history', async () => {
+    mockChatMessages = []; // Reset history
     let sentModel = null;
     axios.post = async (url, data, config) => {
       sentModel = data.model;
@@ -154,6 +182,11 @@ describe('Chatbot API Integration Tests', () => {
 
     assert.equal(res.statusCode, 200);
     assert.equal(sentModel, 'gemma-4-E4B-it-uncensored-heretic-Q4_K_M.gguf');
+    
+    // Verify mapped model name is stored in history
+    assert.equal(mockChatMessages.length, 2);
+    assert.equal(mockChatMessages[0].model, 'gemma-4-E4B-it-uncensored-heretic-Q4_K_M.gguf');
+    assert.equal(mockChatMessages[1].model, 'gemma-4-E4B-it-uncensored-heretic-Q4_K_M.gguf');
   });
 
   it('POST /v1/chatbot handles AI server error and returns 502', async () => {
@@ -175,6 +208,34 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(res.statusCode, 502);
     assert.equal(res.body.ok, false);
     assert.equal(res.body.error.code, 'AI_SERVICE_ERROR');
+  });
+
+  it('GET /v1/chatbot/history without auth returns 401', async () => {
+    const res = await httpRequest(server, 'GET', '/v1/chatbot/history');
+    assert.equal(res.statusCode, 401);
+    assert.equal(res.body.ok, false);
+    assert.equal(res.body.error.code, 'MISSING_BEARER_TOKEN');
+  });
+
+  it('GET /v1/chatbot/history with auth returns chat history list', async () => {
+    // Populate mock history
+    mockChatMessages = [
+      { id: 1, user_id: 1, role: 'user', content: 'Hello', model: 'gemma-4-e4b', created_at: new Date('2026-06-14T00:00:00Z') },
+      { id: 2, user_id: 1, role: 'assistant', content: 'Hi there!', model: 'gemma-4-e4b', created_at: new Date('2026-06-14T00:00:01Z') }
+    ];
+
+    const token = createAccessToken(mockUser);
+    const res = await httpRequest(server, 'GET', '/v1/chatbot/history?limit=10', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.history.length, 2);
+    assert.equal(res.body.history[0].role, 'user');
+    assert.equal(res.body.history[0].content, 'Hello');
+    assert.equal(res.body.history[1].role, 'assistant');
+    assert.equal(res.body.history[1].content, 'Hi there!');
   });
 
   it('teardown server and restore mocks', async () => {
