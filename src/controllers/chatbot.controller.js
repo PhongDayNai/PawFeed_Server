@@ -9,7 +9,8 @@ import {
   findMatchingWikiEntries,
   getUserMemories,
   saveUserMemory,
-  deleteUserMemory as deleteUserMemoryService
+  deleteUserMemory as deleteUserMemoryService,
+  getMessageByClientMsgId
 } from '../services/chatbot.service.js';
 import { sendSuccess } from '../utils/response.js';
 import { getUserDashboard } from '../services/dashboard.service.js';
@@ -207,30 +208,48 @@ export const NOMI_SYSTEM_PROMPT = `${NOMI_SYSTEM_PROMPT_PREFIX}\n\n${NOMI_SYSTEM
  * Handles chatbot completion requests and records the interaction history
  */
 export async function askChatbot(req, res) {
-  const { messages, model, temperature, maxTokens } = req.body;
+  const { messages, model, temperature, maxTokens, clientMsgId } = req.body;
   const userId = req.auth.userId;
 
   // 1. Resolve model name
   const resolvedModel = resolveModelName(model);
 
-  // 2. Determine active session_id based on time elapsed since the last message
-  const lastMessage = await getLastChatMessage(userId);
-  const timeoutSec = env.ai.chatbotSessionTimeoutSec;
-  let sessionId = await resolveActiveSessionId(userId, lastMessage, timeoutSec);
+  // Extract client message identifier from body or header
+  const effectiveClientMsgId = clientMsgId || req.headers['idempotency-key'] || null;
 
+  // Check if message with this clientMsgId / Idempotency-Key already exists
+  let sessionId = null;
+  let isDuplicate = false;
+
+  if (effectiveClientMsgId) {
+    const existingMsg = await getMessageByClientMsgId(userId, effectiveClientMsgId);
+    if (existingMsg) {
+      isDuplicate = true;
+      sessionId = existingMsg.session_id;
+    }
+  }
+
+  // 2. Determine active session_id based on time elapsed since the last message (if not already resolved)
   if (!sessionId) {
-    sessionId = crypto.randomUUID();
+    const lastMessage = await getLastChatMessage(userId);
+    const timeoutSec = env.ai.chatbotSessionTimeoutSec;
+    sessionId = await resolveActiveSessionId(userId, lastMessage, timeoutSec);
+
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+    }
   }
 
   // 3. Extract and save the user's latest message with the active sessionId
   const userMessage = messages[messages.length - 1]?.content || '';
-  if (userMessage) {
+  if (userMessage && !isDuplicate) {
     await saveChatMessage({
       userId,
       role: 'user',
       content: userMessage,
       model: resolvedModel,
-      sessionId
+      sessionId,
+      clientMsgId: effectiveClientMsgId
     });
   }
 

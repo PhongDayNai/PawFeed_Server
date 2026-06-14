@@ -110,11 +110,18 @@ describe('Chatbot API Integration Tests', () => {
           role: params[2],
           content: params[3],
           model: params[4],
-          created_at: new Date()
+          created_at: new Date(),
+          client_msg_id: params[6] || null
         });
         return [{ insertId: mockChatMessages.length }];
       }
       if (normalizedSql.includes('FROM chatbot_messages')) {
+        if (normalizedSql.includes('client_msg_id = ?')) {
+          const userId = params[0];
+          const clientMsgId = params[1];
+          const found = mockChatMessages.find(m => m.user_id === userId && m.client_msg_id === clientMsgId);
+          return [found ? [found] : []];
+        }
         if (/\bLIMIT\s+1\b/i.test(normalizedSql)) {
           const last = mockChatMessages[mockChatMessages.length - 1];
           return [last ? [last] : []];
@@ -654,7 +661,7 @@ describe('Chatbot API Integration Tests', () => {
 
     // Verify tools were supplied to AI
     assert.ok(receivedTools);
-    assert.equal(receivedTools.length, 10);
+    assert.equal(receivedTools.length, 12);
     assert.equal(receivedTools[0].function.name, 'calculateMotorRunTime');
     assert.equal(receivedTools[1].function.name, 'calculateFlowRate');
     assert.equal(receivedTools[2].function.name, 'calculateDailyFoodRequirement');
@@ -1662,6 +1669,129 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(msg.tool_calls[0].id, 'call_test_123');
     assert.equal(msg.tool_calls[0].function.name, 'proposeFeedNow');
     assert.equal(msg.tool_calls[0].function.arguments.deviceId, 'feeder001');
+  });
+
+  it('POST /v1/chatbot checks and handles clientMsgId idempotency / retry logic', async () => {
+    mockChatMessages = []; // Reset history
+    const token = createAccessToken(mockUser);
+    const uuidKey = '110e8400-e29b-41d4-a716-446655440000';
+
+    let llmCallCount = 0;
+    axios.post = async (url, data, config) => {
+      llmCallCount++;
+      return {
+        data: {
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: `Response number ${llmCallCount}`
+              }
+            }
+          ]
+        }
+      };
+    };
+
+    // First request: includes clientMsgId
+    const res1 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'First try' }],
+        clientMsgId: uuidKey
+      }
+    });
+
+    assert.equal(res1.statusCode, 200);
+    assert.equal(res1.body.ok, true);
+    assert.equal(res1.body.message.content, 'Response number 1');
+    // Expected database state: 1 user message (with clientMsgId) + 1 assistant message
+    assert.equal(mockChatMessages.length, 2);
+    assert.equal(mockChatMessages[0].role, 'user');
+    assert.equal(mockChatMessages[0].content, 'First try');
+    assert.equal(mockChatMessages[0].client_msg_id, uuidKey);
+    assert.equal(mockChatMessages[1].role, 'assistant');
+
+    // Second request (retry): same clientMsgId
+    const res2 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        // Content might change, but clientMsgId is the same
+        messages: [{ role: 'user', content: 'First try' }],
+        clientMsgId: uuidKey
+      }
+    });
+
+    assert.equal(res2.statusCode, 200);
+    assert.equal(res2.body.ok, true);
+    assert.equal(res2.body.message.content, 'Response number 2');
+    // Expected database state: should NOT insert a new user message, but inserts the assistant response
+    assert.equal(mockChatMessages.length, 3);
+    assert.equal(mockChatMessages[2].role, 'assistant');
+    assert.equal(mockChatMessages[2].content, 'Response number 2');
+  });
+
+  it('POST /v1/chatbot checks and handles Idempotency-Key header retry logic', async () => {
+    mockChatMessages = []; // Reset history
+    const token = createAccessToken(mockUser);
+    const headerKey = '220e8400-e29b-41d4-a716-446655440000';
+
+    let llmCallCount = 0;
+    axios.post = async (url, data, config) => {
+      llmCallCount++;
+      return {
+        data: {
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: `Response number ${llmCallCount}`
+              }
+            }
+          ]
+        }
+      };
+    };
+
+    // First request: includes Idempotency-Key header
+    const res1 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Idempotency-Key': headerKey
+      },
+      body: {
+        messages: [{ role: 'user', content: 'Header try' }]
+      }
+    });
+
+    assert.equal(res1.statusCode, 200);
+    assert.equal(res1.body.ok, true);
+    assert.equal(res1.body.message.content, 'Response number 1');
+    // Expected database state: 1 user message (with clientMsgId) + 1 assistant message
+    assert.equal(mockChatMessages.length, 2);
+    assert.equal(mockChatMessages[0].role, 'user');
+    assert.equal(mockChatMessages[0].content, 'Header try');
+    assert.equal(mockChatMessages[0].client_msg_id, headerKey);
+    assert.equal(mockChatMessages[1].role, 'assistant');
+
+    // Second request (retry): same Idempotency-Key header
+    const res2 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Idempotency-Key': headerKey
+      },
+      body: {
+        messages: [{ role: 'user', content: 'Header try' }]
+      }
+    });
+
+    assert.equal(res2.statusCode, 200);
+    assert.equal(res2.body.ok, true);
+    assert.equal(res2.body.message.content, 'Response number 2');
+    // Expected database state: should NOT insert a new user message, but inserts the assistant response
+    assert.equal(mockChatMessages.length, 3);
+    assert.equal(mockChatMessages[2].role, 'assistant');
+    assert.equal(mockChatMessages[2].content, 'Response number 2');
   });
 
   it('teardown server and restore mocks', async () => {

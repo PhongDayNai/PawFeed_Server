@@ -10,14 +10,34 @@ import { writeAuditLog } from './audit.service.js';
  * @param {string} params.role 'user', 'assistant', or 'system'
  * @param {string} params.content
  * @param {string} params.model
+ * @param {string} [params.clientMsgId]
  */
-export async function saveChatMessage({ userId, role, content, model, sessionId }) {
+export async function saveChatMessage({ userId, role, content, model, sessionId, clientMsgId }) {
   const pool = getPool();
   await pool.execute(
-    `INSERT INTO chatbot_messages (user_id, session_id, role, content, model, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [userId, sessionId, role, content, model, new Date()]
+    `INSERT INTO chatbot_messages (user_id, session_id, role, content, model, created_at, client_msg_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [userId, sessionId, role, content, model, new Date(), clientMsgId || null]
   );
+}
+
+/**
+ * Retrieves a chat message by user ID and clientMsgId
+ * @param {number} userId
+ * @param {string} clientMsgId
+ * @returns {Promise<Object|null>} Message details or null
+ */
+export async function getMessageByClientMsgId(userId, clientMsgId) {
+  if (!clientMsgId) return null;
+  const pool = getPool();
+  const [rows] = await pool.execute(
+    `SELECT id, session_id, role, content, model, created_at
+     FROM chatbot_messages
+     WHERE user_id = ? AND client_msg_id = ?
+     LIMIT 1`,
+    [userId, clientMsgId]
+  );
+  return rows[0] || null;
 }
 
 /**
