@@ -1,5 +1,7 @@
+import crypto from 'node:crypto';
+import { env } from '../config/env.js';
 import { getChatCompletion, resolveModelName } from '../services/ai.service.js';
-import { saveChatMessage, getUserChatHistory } from '../services/chatbot.service.js';
+import { saveChatMessage, getUserChatHistory, getLastChatMessage, getSessionChatHistory } from '../services/chatbot.service.js';
 import { sendSuccess } from '../utils/response.js';
 
 export const NOMI_SYSTEM_PROMPT = `You are Nomi, a warm, friendly, and highly knowledgeable pet care assistant for the PawFeed automatic pet feeder application.
@@ -29,26 +31,46 @@ export async function askChatbot(req, res) {
   // 1. Resolve model name
   const resolvedModel = resolveModelName(model);
 
-  // 2. Extract and save the user's latest message
+  // 2. Determine active session_id based on time elapsed since the last message
+  let sessionId;
+  const lastMessage = await getLastChatMessage(userId);
+  const timeoutSec = env.ai.chatbotSessionTimeoutSec;
+
+  if (lastMessage && lastMessage.created_at) {
+    const elapsedSec = (Date.now() - new Date(lastMessage.created_at).getTime()) / 1000;
+    if (elapsedSec < timeoutSec) {
+      sessionId = lastMessage.session_id;
+    }
+  }
+
+  if (!sessionId) {
+    sessionId = crypto.randomUUID();
+  }
+
+  // 3. Extract and save the user's latest message with the active sessionId
   const userMessage = messages[messages.length - 1]?.content || '';
   if (userMessage) {
     await saveChatMessage({
       userId,
       role: 'user',
       content: userMessage,
-      model: resolvedModel
+      model: resolvedModel,
+      sessionId
     });
   }
+
+  // 4. Retrieve session-only chat history from DB to build the context for the AI
+  const sessionHistory = await getSessionChatHistory(userId, sessionId);
 
   // Inject Nomi's system prompt at the beginning of the messages list
   const systemPromptMessage = {
     role: 'system',
     content: NOMI_SYSTEM_PROMPT
   };
-  const filteredMessages = messages.filter(m => m.role !== 'system');
-  const messagesToSend = [systemPromptMessage, ...filteredMessages];
+  const filteredHistory = sessionHistory.filter(m => m.role !== 'system');
+  const messagesToSend = [systemPromptMessage, ...filteredHistory];
 
-  // 3. Call AI API
+  // 5. Call AI API
   const result = await getChatCompletion({
     messages: messagesToSend,
     model,
@@ -56,13 +78,14 @@ export async function askChatbot(req, res) {
     maxTokens
   });
 
-  // 4. Save the assistant's response
+  // 6. Save the assistant's response
   if (result?.content) {
     await saveChatMessage({
       userId,
       role: 'assistant',
       content: result.content,
-      model: resolvedModel
+      model: resolvedModel,
+      sessionId
     });
   }
 

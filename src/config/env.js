@@ -144,6 +144,7 @@ export const env = {
   ai: {
     baseUrl: process.env.AI_BASE_URL || 'https://openai-api.phongdaynai.id.vn/v1',
     apiKey: process.env.AI_API_KEY || '',
-    model: process.env.AI_MODEL || 'gpt-3.5-turbo'
+    model: process.env.AI_MODEL || 'gpt-3.5-turbo',
+    chatbotSessionTimeoutSec: parseInteger(process.env.CHATBOT_SESSION_TIMEOUT_SEC, 3600)
   }
 };

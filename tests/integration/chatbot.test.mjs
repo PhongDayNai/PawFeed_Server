@@ -60,22 +60,33 @@ describe('Chatbot API Integration Tests', () => {
     const pool = getPool();
     originalPoolExecute = pool.execute;
     pool.execute = async (sql, params) => {
-      if (sql.includes('users') && sql.includes('id = ?')) {
+      const normalizedSql = sql.replace(/\s+/g, ' ');
+      if (normalizedSql.includes('users') && normalizedSql.includes('id = ?')) {
         return [[mockUser]];
       }
-      if (sql.includes('INSERT INTO chatbot_messages')) {
+      if (normalizedSql.includes('INSERT INTO chatbot_messages')) {
         mockChatMessages.push({
           id: mockChatMessages.length + 1,
           user_id: params[0],
-          role: params[1],
-          content: params[2],
-          model: params[3],
+          session_id: params[1],
+          role: params[2],
+          content: params[3],
+          model: params[4],
           created_at: new Date()
         });
         return [{ insertId: mockChatMessages.length }];
       }
-      if (sql.includes('FROM chatbot_messages')) {
-        // Simple mock implementation of getUserChatHistory sorting by id ASC
+      if (normalizedSql.includes('FROM chatbot_messages')) {
+        if (/\bLIMIT\s+1\b/i.test(normalizedSql)) {
+          const last = mockChatMessages[mockChatMessages.length - 1];
+          return [last ? [last] : []];
+        }
+        if (normalizedSql.includes('AND session_id = ?')) {
+          const sessionId = params[1];
+          const filtered = mockChatMessages.filter(m => m.user_id === params[0] && m.session_id === sessionId);
+          return [filtered];
+        }
+        // General history query
         return [mockChatMessages];
       }
       return [[]];
@@ -236,6 +247,107 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(res.body.history[0].content, 'Hello');
     assert.equal(res.body.history[1].role, 'assistant');
     assert.equal(res.body.history[1].content, 'Hi there!');
+  });
+
+  it('implements time-based session auto-splitting and uses only active session history for AI context', async () => {
+    mockChatMessages = []; // Reset history
+
+    let aiReceivedMessagesList = [];
+    axios.post = async (url, data, config) => {
+      aiReceivedMessagesList.push(data.messages);
+      return {
+        data: {
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: `Response to: ${data.messages[data.messages.length - 1].content}`
+              }
+            }
+          ]
+        }
+      };
+    };
+
+    const token = createAccessToken(mockUser);
+
+    // 1st Message (T0)
+    const res1 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Message 1' }]
+      }
+    });
+    assert.equal(res1.statusCode, 200);
+
+    // Verify first session ID was created
+    assert.equal(mockChatMessages.length, 2); // user + assistant
+    const sessionId1 = mockChatMessages[0].session_id;
+    assert.ok(sessionId1);
+    assert.equal(mockChatMessages[1].session_id, sessionId1);
+
+    // Mock first messages' time to be now to ensure the second message is within the 3600s window
+    const t0 = new Date();
+    mockChatMessages[0].created_at = t0;
+    mockChatMessages[1].created_at = t0;
+
+    // 2nd Message (T0 + 10 seconds)
+    const res2 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [
+          { role: 'user', content: 'Message 1' },
+          { role: 'user', content: 'Message 2' }
+        ]
+      }
+    });
+    assert.equal(res2.statusCode, 200);
+
+    // Verify it reused the same session ID
+    assert.equal(mockChatMessages.length, 4); // 4 messages total
+    assert.equal(mockChatMessages[2].session_id, sessionId1);
+    assert.equal(mockChatMessages[3].session_id, sessionId1);
+
+    // 3rd Message (T0 + 4000 seconds -> exceeds 3600 seconds timeout)
+    // Manually shift the timestamp of the last message (index 3) to 4000s in the past.
+    mockChatMessages[3].created_at = new Date(Date.now() - 4000 * 1000);
+
+    const res3 = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [
+          { role: 'user', content: 'Message 1' },
+          { role: 'user', content: 'Message 2' },
+          { role: 'user', content: 'Message 3' }
+        ]
+      }
+    });
+    assert.equal(res3.statusCode, 200);
+
+    // Verify a new session ID was created
+    assert.equal(mockChatMessages.length, 6); // 6 messages total
+    const sessionId2 = mockChatMessages[4].session_id;
+    assert.ok(sessionId2);
+    assert.notEqual(sessionId2, sessionId1);
+    assert.equal(mockChatMessages[5].session_id, sessionId2);
+
+    // Verify AI context only contains messages from the active session
+    // Call 1: messages sent to AI should be: [SystemPrompt, User Message 1]
+    assert.equal(aiReceivedMessagesList[0].length, 2);
+    assert.equal(aiReceivedMessagesList[0][0].role, 'system');
+    assert.equal(aiReceivedMessagesList[0][1].content, 'Message 1');
+
+    // Call 2: messages sent to AI should be: [SystemPrompt, User Msg 1, Assistant Msg 1, User Msg 2] (since they belong to the same session)
+    assert.equal(aiReceivedMessagesList[1].length, 4);
+    assert.equal(aiReceivedMessagesList[1][0].role, 'system');
+    assert.equal(aiReceivedMessagesList[1][1].content, 'Message 1');
+    assert.equal(aiReceivedMessagesList[1][2].role, 'assistant');
+    assert.equal(aiReceivedMessagesList[1][3].content, 'Message 2');
+
+    // Call 3: messages sent to AI should be: [SystemPrompt, User Msg 3] (since Session 2 started, and we split context)
+    assert.equal(aiReceivedMessagesList[2].length, 2);
+    assert.equal(aiReceivedMessagesList[2][0].role, 'system');
+    assert.equal(aiReceivedMessagesList[2][1].content, 'Message 3');
   });
 
   it('teardown server and restore mocks', async () => {
