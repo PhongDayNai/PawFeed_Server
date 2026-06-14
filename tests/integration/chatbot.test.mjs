@@ -50,7 +50,25 @@ describe('Chatbot API Integration Tests', () => {
     is_disabled: 0
   };
 
+  const mockAdminUser = {
+    id: 99,
+    full_name: 'Test Admin',
+    email: 'admin@example.com',
+    password_hash: 'hash',
+    role: 'admin',
+    is_disabled: 0
+  };
+
   let mockChatMessages = [];
+  let mockWikiEntries = [
+    { id: 1, keyword: 'calibrate', content: 'Calibrate content here', created_at: new Date(), updated_at: new Date() },
+    { id: 2, keyword: 'lượng ăn', content: 'Diet plan content here', created_at: new Date(), updated_at: new Date() },
+    { id: 3, keyword: 'độc hại,độc,thức ăn độc,thực phẩm độc,không được ăn', content: 'Warning: Toxic food details.', created_at: new Date(), updated_at: new Date() },
+    { id: 4, keyword: 'sốt ở chó mèo,sốt,nóng tai,nhiệt độ cao', content: 'Warning: Fever details.', created_at: new Date(), updated_at: new Date() },
+    { id: 5, keyword: 'mèo bị giảm bạch cầu,fpv,viêm ruột truyền nhiễm mèo', content: 'Warning: FPV details.', created_at: new Date(), updated_at: new Date() }
+  ];
+
+  let originalPoolGetConnection;
 
   it('setup server and mock db/axios', async () => {
     server = http.createServer(app);
@@ -59,9 +77,12 @@ describe('Chatbot API Integration Tests', () => {
     // Mock DB pool.execute
     const pool = getPool();
     originalPoolExecute = pool.execute;
+    originalPoolGetConnection = pool.getConnection;
     pool.execute = async (sql, params) => {
       const normalizedSql = sql.replace(/\s+/g, ' ');
       if (normalizedSql.includes('users') && normalizedSql.includes('id = ?')) {
+        const id = params[0];
+        if (Number(id) === 99) return [[mockAdminUser]];
         return [[mockUser]];
       }
       if (normalizedSql.includes('INSERT INTO chatbot_messages')) {
@@ -89,7 +110,78 @@ describe('Chatbot API Integration Tests', () => {
         // General history query
         return [mockChatMessages];
       }
+      // Wiki queries
+      if (normalizedSql.includes('SELECT keyword, content FROM chatbot_wiki')) {
+        return [mockWikiEntries];
+      }
+      if (normalizedSql.includes('SELECT COUNT(*) AS total FROM chatbot_wiki')) {
+        let filtered = [...mockWikiEntries];
+        if (params[0]) {
+          const search = params[0].replace(/%/g, '').toLowerCase();
+          filtered = filtered.filter(e => e.keyword.toLowerCase().includes(search) || e.content.toLowerCase().includes(search));
+        }
+        return [[{ total: filtered.length }]];
+      }
+      if (normalizedSql.includes('SELECT id, keyword, content, created_at, updated_at FROM chatbot_wiki') && !normalizedSql.includes('WHERE id = ?')) {
+        let filtered = [...mockWikiEntries];
+        if (params[0]) {
+          const search = params[0].replace(/%/g, '').toLowerCase();
+          filtered = filtered.filter(e => e.keyword.toLowerCase().includes(search) || e.content.toLowerCase().includes(search));
+        }
+        filtered.sort((a, b) => a.keyword.localeCompare(b.keyword));
+        return [filtered];
+      }
+      if (normalizedSql.includes('SELECT') && normalizedSql.includes('FROM chatbot_wiki WHERE id = ?')) {
+        const id = params[0];
+        const entry = mockWikiEntries.find(e => e.id === Number(id));
+        return [entry ? [entry] : []];
+      }
+      if (normalizedSql.includes('FROM chatbot_wiki WHERE keyword = ?')) {
+        const keyword = params[0];
+        const excludeId = params[1];
+        const dup = mockWikiEntries.find(e => e.keyword.toLowerCase() === keyword.toLowerCase() && (!excludeId || e.id !== Number(excludeId)));
+        return [dup ? [dup] : []];
+      }
+      if (normalizedSql.includes('INSERT INTO chatbot_wiki')) {
+        const newEntry = {
+          id: mockWikiEntries.length + 1,
+          keyword: params[0],
+          content: params[1],
+          created_at: new Date(),
+          updated_at: new Date()
+        };
+        mockWikiEntries.push(newEntry);
+        return [{ insertId: newEntry.id }];
+      }
+      if (normalizedSql.includes('UPDATE chatbot_wiki SET')) {
+        const keyword = params[0];
+        const content = params[1];
+        const id = params[2];
+        const entry = mockWikiEntries.find(e => e.id === Number(id));
+        if (entry) {
+          entry.keyword = keyword;
+          entry.content = content;
+          entry.updated_at = new Date();
+        }
+        return [[]];
+      }
+      if (normalizedSql.includes('DELETE FROM chatbot_wiki WHERE id = ?')) {
+        const id = params[0];
+        mockWikiEntries = mockWikiEntries.filter(e => e.id !== Number(id));
+        return [[]];
+      }
       return [[]];
+    };
+
+    pool.getConnection = async () => {
+      return {
+        beginTransaction: async () => {},
+        commit: async () => {},
+        rollback: async () => {},
+        release: () => {},
+        execute: pool.execute,
+        query: pool.execute
+      };
     };
 
     // Mock axios.post
@@ -545,10 +637,241 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(mockChatMessages[1].content, 'Dựa trên tính toán, thời gian chạy motor khoảng 12 giây, tốc độ dòng chảy thực tế là 4.5 g/s và nhu cầu ăn hàng ngày của mèo là 81g.');
   });
 
+  it('POST /v1/chatbot matches wiki keyword and passes to system prompt', async () => {
+    mockChatMessages = []; // Reset history
+    let sentSystemPrompt = null;
+
+    axios.post = async (url, data, config) => {
+      const systemMsg = data.messages.find(m => m.role === 'system');
+      sentSystemPrompt = systemMsg ? systemMsg.content : null;
+      return {
+        data: {
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: 'Tôi thấy bạn hỏi về calibrate.'
+              }
+            }
+          ]
+        }
+      };
+    };
+
+    const token = createAccessToken(mockUser);
+    const res = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Hãy chỉ tôi cách calibrate máy' }]
+      }
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(sentSystemPrompt);
+    assert.ok(sentSystemPrompt.includes('[WIKI] calibrate: Calibrate content here'));
+  });
+
+  it('POST /v1/chatbot does NOT match short keyword when it is part of a compound word (False Positive check)', async () => {
+    mockChatMessages = [];
+    let sentSystemPrompt = null;
+
+    axios.post = async (url, data, config) => {
+      const systemMsg = data.messages.find(m => m.role === 'system');
+      sentSystemPrompt = systemMsg ? systemMsg.content : null;
+      return {
+        data: { choices: [{ message: { role: 'assistant', content: 'Mock response' } }] }
+      };
+    };
+
+    const token = createAccessToken(mockUser);
+    const res = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Tôi đang đọc một cuốn sách rất độc đáo' }]
+      }
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(sentSystemPrompt);
+    // Should NOT include the toxic wiki entry because 'độc' was part of 'độc đáo'
+    assert.ok(!sentSystemPrompt.includes('[WIKI] độc hại,độc'));
+  });
+
+  it('POST /v1/chatbot matches short keyword when both compound word and true keyword exist', async () => {
+    mockChatMessages = [];
+    let sentSystemPrompt = null;
+
+    axios.post = async (url, data, config) => {
+      const systemMsg = data.messages.find(m => m.role === 'system');
+      sentSystemPrompt = systemMsg ? systemMsg.content : null;
+      return {
+        data: { choices: [{ message: { role: 'assistant', content: 'Mock response' } }] }
+      };
+    };
+
+    const token = createAccessToken(mockUser);
+    const res = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Tôi bị sốt ruột vì chú mèo bị sốt cao' }]
+      }
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(sentSystemPrompt);
+    // Should include the fever wiki entry because 'sốt' in 'sốt cao' is matched, despite 'sốt ruột' being excluded
+    assert.ok(sentSystemPrompt.includes('[WIKI] sốt ở chó mèo,sốt,nóng tai,nhiệt độ cao'));
+  });
+
+  it('POST /v1/chatbot does NOT match any wiki entries when user query is completely out of context', async () => {
+    mockChatMessages = [];
+    let sentSystemPrompt = null;
+
+    axios.post = async (url, data, config) => {
+      const systemMsg = data.messages.find(m => m.role === 'system');
+      sentSystemPrompt = systemMsg ? systemMsg.content : null;
+      return {
+        data: { choices: [{ message: { role: 'assistant', content: 'Mock response' } }] }
+      };
+    };
+
+    const token = createAccessToken(mockUser);
+    const res = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Thời tiết ngày mai thế nào?' }]
+      }
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(sentSystemPrompt);
+    // Should NOT contain any WIKI block since nothing matches
+    assert.ok(!sentSystemPrompt.includes('[WIKI]'));
+  });
+
+  it('POST /v1/chatbot matches uppercase English abbreviation (e.g. FPV)', async () => {
+    mockChatMessages = [];
+    let sentSystemPrompt = null;
+
+    axios.post = async (url, data, config) => {
+      const systemMsg = data.messages.find(m => m.role === 'system');
+      sentSystemPrompt = systemMsg ? systemMsg.content : null;
+      return {
+        data: { choices: [{ message: { role: 'assistant', content: 'Mock response' } }] }
+      };
+    };
+
+    const token = createAccessToken(mockUser);
+    const res = await httpRequest(server, 'POST', '/v1/chatbot', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: {
+        messages: [{ role: 'user', content: 'Mèo nhà em bị nhiễm FPV thì làm thế nào?' }]
+      }
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(sentSystemPrompt);
+    assert.ok(sentSystemPrompt.includes('[WIKI] mèo bị giảm bạch cầu,fpv,viêm ruột truyền nhiễm mèo'));
+  });
+
+  it('GET /v1/chatbot/history returns empty list when no chat history exists', async () => {
+    mockChatMessages = []; // Reset history
+    const token = createAccessToken(mockUser);
+    const res = await httpRequest(server, 'GET', '/v1/chatbot/history', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.history.length, 0);
+  });
+
+  it('admin wiki CRUD operations access control and validation', async () => {
+    const adminToken = createAccessToken(mockAdminUser);
+    const userToken = createAccessToken(mockUser);
+
+    // 1. User cannot access admin wiki endpoints (403)
+    const resForbidden = await httpRequest(server, 'GET', '/v1/admin/chatbot/wiki', {
+      headers: { Authorization: `Bearer ${userToken}` }
+    });
+    assert.equal(resForbidden.statusCode, 403);
+
+    // 2. Create wiki entry (Admin)
+    const resCreate = await httpRequest(server, 'POST', '/v1/admin/chatbot/wiki', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        keyword: 'Wifi',
+        content: 'Wifi config instructions'
+      }
+    });
+    assert.equal(resCreate.statusCode, 200);
+    assert.equal(resCreate.body.ok, true);
+    assert.equal(resCreate.body.entry.keyword, 'Wifi');
+    const newId = resCreate.body.entry.id;
+
+    // 3. Create wiki duplicate keyword (409)
+    const resCreateDup = await httpRequest(server, 'POST', '/v1/admin/chatbot/wiki', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        keyword: 'Wifi',
+        content: 'Duplicate keyword'
+      }
+    });
+    assert.equal(resCreateDup.statusCode, 409);
+
+    // 4. Create wiki entry invalid body (400)
+    const resCreateInvalid = await httpRequest(server, 'POST', '/v1/admin/chatbot/wiki', {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        keyword: '',
+        content: ''
+      }
+    });
+    assert.equal(resCreateInvalid.statusCode, 400);
+
+    // 5. List wiki entries (Admin)
+    const resList = await httpRequest(server, 'GET', '/v1/admin/chatbot/wiki?search=Wifi', {
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert.equal(resList.statusCode, 200);
+    assert.ok(resList.body.entries.length >= 1);
+    assert.equal(resList.body.entries[0].keyword, 'Wifi');
+
+    // 6. Get single wiki entry (Admin)
+    const resGet = await httpRequest(server, 'GET', `/v1/admin/chatbot/wiki/${newId}`, {
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert.equal(resGet.statusCode, 200);
+    assert.equal(resGet.body.entry.keyword, 'Wifi');
+
+    // 7. Update wiki entry (Admin)
+    const resUpdate = await httpRequest(server, 'PATCH', `/v1/admin/chatbot/wiki/${newId}`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        content: 'Updated Wifi config instructions'
+      }
+    });
+    assert.equal(resUpdate.statusCode, 200);
+    assert.equal(resUpdate.body.entry.content, 'Updated Wifi config instructions');
+
+    // 8. Delete wiki entry (Admin)
+    const resDelete = await httpRequest(server, 'DELETE', `/v1/admin/chatbot/wiki/${newId}`, {
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert.equal(resDelete.statusCode, 200);
+    assert.equal(resDelete.body.ok, true);
+
+    // 9. Get deleted wiki entry (404)
+    const resGetDeleted = await httpRequest(server, 'GET', `/v1/admin/chatbot/wiki/${newId}`, {
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert.equal(resGetDeleted.statusCode, 404);
+  });
+
   it('teardown server and restore mocks', async () => {
     // Restore original methods
     const pool = getPool();
     pool.execute = originalPoolExecute;
+    pool.getConnection = originalPoolGetConnection;
     axios.post = originalAxiosPost;
 
     await new Promise((resolve) => server.close(resolve));
