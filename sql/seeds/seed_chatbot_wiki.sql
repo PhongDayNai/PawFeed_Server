@@ -797,7 +797,7 @@ INSERT INTO chatbot_wiki (
   NOW()
 ), (
   'tràn thức ăn,lỗi tràn khay,khay ăn quá đầy máy cho ăn',
-  'Cách khắc phục khi khay ăn máy PawFeed bị tràn thức ăn ra sàn nhà:\n- Nguyên nhân: Cài đặt lượng thức ăn nhả ra mỗi bữa quá nhiều so với sức ăn thực tế của bé, cảm biến hồng ngoại đầu ra bị bám bụi bẩn nên không phát hiện khay đã đầy hạt.\n- Hướng xử lý:\n1. Thu dọn bớt hạt thừa trên khay ăn và lau sạch khay.\n2. Dùng khăn mềm khô lau sạch cửa nhả hạt và khu vực cảm biến hồng ngoại ở buồng nhả hạt của máy.\n3. Sử dụng app PawFeed để điều chỉnh giảm số lượng phần ăn (portion) hoặc giảm bớt tần suất bữa ăn tự động trong ngày.',
+  'Cách khắc phục khi khay ăn máy PawFeed bị tràn thức ăn ra sàn nhà:\n- Nguyên nhân: Cài đặt lượng thức ăn nhả ra mỗi bữa quá nhiều so với sức ăn thực tế của bé.\n- Hướng xử lý:\n1. Thu dọn bớt hạt thừa trên khay ăn và lau sạch khay.\n2. Sử dụng ứng dụng Web/App PawFeed để điều chỉnh giảm thời gian mở cửa xả hạt (openDurationMs) hoặc giảm bớt số lần cho ăn tự động trong ngày.',
   NOW(),
   NOW()
 ), (
@@ -823,6 +823,11 @@ INSERT INTO chatbot_wiki (
 ), (
   'chọn hạt cho mèo,chọn hạt cho chó,hạt theo độ tuổi,lựa chọn thức ăn hạt',
   'Cách chọn loại thức ăn hạt khô dựa trên giai đoạn phát triển của chó mèo:\n- Dưới 12 tháng tuổi (thú non): Chọn hạt puppy/kitten có hàm lượng đạm cao (trên 30-35%), giàu canxi và chất béo để phát triển khung xương và não bộ.\n- Từ 1 đến 7 tuổi (trưởng thành): Chọn hạt có hàm lượng dinh dưỡng cân bằng, kiểm soát calo tốt để tránh béo phì.\n- Trên 7 tuổi (lớn tuổi): Chọn hạt dễ tiêu hóa, giảm phốt pho để bảo vệ thận và bổ sung glucosamine hỗ trợ các khớp xương suy thoái.\n- Sử dụng với PawFeed để điều chỉnh liều lượng lượng ăn chính xác theo từng độ tuổi.',
+  NOW(),
+  NOW()
+), (
+  'phần cứng máy,cấu tạo máy,tính năng máy,camera,cảm biến',
+  'Máy cho ăn tự động PawFeed (sử dụng board ESP8266 điều khiển động cơ Servo quay đóng mở cửa xả hạt theo thời gian tính bằng mili-giây). Thiết bị hoàn toàn KHÔNG tích hợp camera giám sát, KHÔNG có cảm biến hồng ngoại (như cảm biến phát hiện khay đầy hạt hay cảm biến tiệm cận), KHÔNG có cân trọng lượng tự động ở khay ăn, KHÔNG hỗ trợ phát giọng nói thu âm và KHÔNG có tính năng bơm nước hay dọn dẹp khay ăn tự động. Mọi hoạt động cho ăn được thực hiện bằng cách quay Servo mở cửa xả hạt theo thời gian nhận từ máy chủ qua MQTT.',
   NOW(),
   NOW()
 )
