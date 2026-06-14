@@ -539,10 +539,14 @@ export async function getChatHistory(req, res) {
  */
 export async function initChatbotSession(req, res) {
   const userId = req.auth.userId;
+  const { forceNewSession } = req.body || {};
   const lastMessage = await getLastChatMessage(userId);
   const timeoutSec = env.ai.chatbotSessionTimeoutSec;
 
-  let sessionId = await resolveActiveSessionId(userId, lastMessage, timeoutSec);
+  let sessionId = null;
+  if (!forceNewSession) {
+    sessionId = await resolveActiveSessionId(userId, lastMessage, timeoutSec);
+  }
   let isNewSession = false;
   let greetingText = '';
 

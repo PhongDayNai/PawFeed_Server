@@ -12,3 +12,8 @@ export const askChatbotSchema = z.object({
   maxTokens: z.number().int().positive().optional(),
   clientMsgId: z.string().uuid('clientMsgId must be a valid UUID.').optional()
 }).strict();
+
+export const initChatbotSessionSchema = z.object({
+  forceNewSession: z.boolean().optional()
+}).strict();
+

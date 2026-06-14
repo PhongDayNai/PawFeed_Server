@@ -477,6 +477,31 @@ describe('Chatbot API Integration Tests', () => {
     assert.equal(mockChatMessages[2].role, 'assistant');
     assert.equal(mockChatMessages[2].content, res5.body.greeting);
     assert.equal(mockChatMessages[2].session_id, res5.body.sessionId);
+
+    // Call 6: Within timeout -> call with forceNewSession: true -> should create a new session and return greeting
+    const res6 = await httpRequest(server, 'POST', '/v1/chatbot/init', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: { forceNewSession: true }
+    });
+    assert.equal(res6.statusCode, 200);
+    assert.equal(res6.body.ok, true);
+    assert.equal(res6.body.isNewSession, true);
+    assert.ok(res6.body.sessionId);
+    assert.notEqual(res6.body.sessionId, res5.body.sessionId);
+    assert.ok(res6.body.greeting);
+    assert.equal(mockChatMessages.length, 4);
+    assert.equal(mockChatMessages[3].role, 'assistant');
+    assert.equal(mockChatMessages[3].content, res6.body.greeting);
+    assert.equal(mockChatMessages[3].session_id, res6.body.sessionId);
+
+    // Call 7: Validation check -> passing invalid value for forceNewSession should fail validation (Zod schema)
+    const res7 = await httpRequest(server, 'POST', '/v1/chatbot/init', {
+      headers: { Authorization: `Bearer ${token}` },
+      body: { forceNewSession: "invalid" }
+    });
+    assert.equal(res7.statusCode, 400);
+    assert.equal(res7.body.ok, false);
+    assert.equal(res7.body.error.code, 'INVALID_BODY');
   });
 
   it('implements time-based session auto-splitting and uses only active session history for AI context', async () => {
