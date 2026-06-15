@@ -161,7 +161,7 @@ export const CHATBOT_TOOLS = [
           },
           openDurationMs: {
             type: 'number',
-            description: 'The duration to open the food dispenser door in milliseconds (typically between 300 and 10000 ms).'
+            description: 'The duration to open the food dispenser door in milliseconds (typically between 100 and 600000 ms).'
           }
         },
         required: ['deviceId', 'openDurationMs']
@@ -192,7 +192,7 @@ export const CHATBOT_TOOLS = [
                 },
                 openDurationMs: {
                   type: 'number',
-                  description: 'Dispenser opening duration in milliseconds (between 300 and 10000 ms).'
+                  description: 'Dispenser opening duration in milliseconds (between 100 and 600000 ms).'
                 }
               },
               required: ['time', 'openDurationMs']

@@ -141,10 +141,10 @@ async function validateInteractiveToolArgs(functionName, args, userId, messagesT
   if (functionName === 'proposeFeedNow') {
     const openDurationMs = args.openDurationMs;
     if (openDurationMs === undefined || openDurationMs === null || typeof openDurationMs !== 'number') {
-      return "Missing or invalid openDurationMs. It must be a valid number representing milliseconds (between 300 and 10000 ms).";
+      return "Missing or invalid openDurationMs. It must be a valid number representing milliseconds (between 100 and 600000 ms).";
     }
-    if (openDurationMs < 300 || openDurationMs > 10000) {
-      return `Invalid openDurationMs: ${openDurationMs}. The duration must be between 300 ms (0.3 seconds) and 10000 ms (10 seconds).`;
+    if (openDurationMs < 100 || openDurationMs > 600000) {
+      return `Invalid openDurationMs: ${openDurationMs}. The duration must be between 100 ms (0.1 seconds) and 600000 ms (600 seconds).`;
     }
   }
 
@@ -160,7 +160,7 @@ async function validateInteractiveToolArgs(functionName, args, userId, messagesT
       if (!entry || typeof entry !== 'object') {
         return `Invalid schedule entry at index ${i}.`;
       }
-      
+
       const time = entry.time;
       if (!time || typeof time !== 'string' || !timeRegex.test(time)) {
         return `Invalid or missing time at entry index ${i}. Time must be in 24-hour format HH:mm (e.g., "08:30" or "14:15").`;
@@ -168,10 +168,10 @@ async function validateInteractiveToolArgs(functionName, args, userId, messagesT
 
       const openDurationMs = entry.openDurationMs;
       if (openDurationMs === undefined || openDurationMs === null || typeof openDurationMs !== 'number') {
-        return `Missing or invalid openDurationMs at entry index ${i}. It must be a valid number representing milliseconds (between 300 and 10000 ms).`;
+        return `Missing or invalid openDurationMs at entry index ${i}. It must be a valid number representing milliseconds (between 100 and 600000 ms).`;
       }
-      if (openDurationMs < 300 || openDurationMs > 10000) {
-        return `Invalid openDurationMs at entry index ${i}: ${openDurationMs}. The duration must be between 300 ms (0.3 seconds) and 10000 ms (10 seconds).`;
+      if (openDurationMs < 100 || openDurationMs > 600000) {
+        return `Invalid openDurationMs at entry index ${i}: ${openDurationMs}. The duration must be between 100 ms (0.1 seconds) and 600000 ms (600 seconds).`;
       }
     }
   }
@@ -189,7 +189,7 @@ Your core capabilities and responsibilities include:
 5. Feeding Control & Scheduling: Use proposeFeedNow to propose triggering an immediate feed command or proposeSaveSchedule to propose saving/updating a schedule. If the user does not specify a device ID, you should first call getUserDevicesList to see if they have registered devices, and use the device ID if there is only one device, or ask the user to clarify if there are multiple.`;
 
 export const NOMI_SYSTEM_PROMPT_SUFFIX = `Strict constraints you must follow:
-1. DURATION LIMITS: The openDurationMs argument in proposeFeedNow or proposeSaveSchedule MUST be between 300 (0.3s) and 10000 (10s). You are strictly forbidden from passing any value > 10000 or < 300. If the user requests more than 10s (e.g. 12s), you MUST cap the tool argument to exactly 10000 and explain this capping in chat.
+1. DURATION LIMITS: The duration parameter in feeding or scheduling tool calls MUST be between 100 (0.1s) and 600000 (600s / 10 minutes). You are strictly forbidden from passing any value outside this range. If the user requests a duration exceeding 600s, you MUST cap the tool argument to exactly 600000 and explain this capping in the chat using natural language, without referencing any technical parameter names, values, or function names.
 2. HARDWARE LIMITATIONS: PawFeed V4 (firmware main.cpp) runs on ESP8266 with a servo dispenser gate, basic LED, and a setup button (GPIO0/D3). It lacks a camera, scale, speaker, infrared tray/overflow sensors, water dispenser, or self-cleaning. Clarify these limits if asked; never claim they exist.
 3. APPLYING SCHEDULES: Saved server schedules do not run on the physical feeder automatically. To apply, users must: generate/download the config on the app, connect to the feeder's setup Wi-Fi (SSID: Feeder-ESP8266), open http://192.168.4.1, then upload and apply the config.
 4. BUSINESS LIMITS: Politely refuse coding/software debugging tasks, veterinary medical diagnoses/prescriptions, or general knowledge topics unrelated to pets/PawFeed.
@@ -206,7 +206,8 @@ export const NOMI_SYSTEM_PROMPT_SUFFIX = `Strict constraints you must follow:
    - Tool Call Argument: openDurationMs for proposeFeedNow/proposeSaveSchedule MUST be an integer in milliseconds.
    - FORMULA & EQUATION REPRESENTATION: You MUST represent all mathematical formulas, equations, relations, and calculations using formal, abstract mathematical symbols (e.g., single letters or short variable names like $T$, $W$, $F$, $E$) and standard mathematical notation. You are strictly forbidden from writing text-based formulas (i.e. do NOT write words like "Thời gian cho ăn", "Trọng lượng", or "Tốc độ chảy" inside the formula/equation itself). All formulas must be formatted in LaTeX (e.g., block equations using $$ ... $$ or inline expressions using $ ... $). Directly below every formula, you must include a detailed legend explaining every symbol/variable, including its name, definition, and unit of measurement.
 8. TOOL USE: You MUST execute the appropriate tools natively when processing queries (e.g. getUserDevicesList for device discovery, calculateMotorRunTime for calculations, updateUserMemory for memory storage). Never ask the user for permission or confirmation before calling query/calculation/memory tools. Keep tone warm, empathetic, and clear. Always reply in the same language used by the user.
-9. NO PRE-EMPTIVE QUESTIONS: While calling tools in intermediate turns (e.g. calling getUserDevicesList), NEVER ask the user questions or request device/pet details in your text content. Only state what you are doing (e.g. "Tôi sẽ kiểm tra...") or output no text. Asking questions while calling tools is strictly prohibited and prevents the workflow from completing.`;
+9. NO PRE-EMPTIVE QUESTIONS: While calling tools in intermediate turns, NEVER ask the user questions or request details in your text content. Only state what you are doing in general natural language, or output no text at all. Never mention any technical tool names or function identifiers. Asking questions while calling tools is strictly prohibited and prevents the workflow from completing.
+10. NO TECHNICAL NAMES IN CHAT: You are strictly forbidden from mentioning, listing, or referring to any technical function names, tool names, API endpoints, argument keys, parameter names, or database column names in your chat responses or conversation text to the user. Always describe your capabilities, tools, status, calculations, and actions using purely user-friendly natural language. Describe what you are doing conceptually rather than referencing the code-level identifiers.`;
 
 export const NOMI_SYSTEM_PROMPT = `${NOMI_SYSTEM_PROMPT_PREFIX}\n\n${NOMI_SYSTEM_PROMPT_SUFFIX}`;
 
@@ -465,7 +466,7 @@ export async function askChatbot(req, res) {
       const formattedToolCalls = currentResponse.tool_calls.map(tc => {
         let parsedArgs = tc.function.arguments;
         if (typeof parsedArgs === 'string') {
-          try { parsedArgs = JSON.parse(parsedArgs); } catch (e) {}
+          try { parsedArgs = JSON.parse(parsedArgs); } catch (e) { }
         }
         return {
           id: tc.id,
