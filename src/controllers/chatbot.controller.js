@@ -4,6 +4,7 @@ import { getChatCompletion, resolveModelName, CHATBOT_TOOLS } from '../services/
 import {
   saveChatMessage,
   getUserChatHistory,
+  getUserChatHistoryCount,
   getLastChatMessage,
   getSessionChatHistory,
   findMatchingWikiEntries,
@@ -13,6 +14,7 @@ import {
   getMessageByClientMsgId
 } from '../services/chatbot.service.js';
 import { sendSuccess } from '../utils/response.js';
+import { buildPaginationMeta } from '../utils/pagination.js';
 import { getUserDashboard } from '../services/dashboard.service.js';
 import { listUserDevices, getUserDevice, getUserDeviceStatus } from '../services/device.service.js';
 import { listUserDeviceEvents, listUserFeedingHistory } from '../services/operationLog.service.js';
@@ -496,9 +498,11 @@ export async function askChatbot(req, res) {
  */
 export async function getChatHistory(req, res) {
   const userId = req.auth.userId;
-  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+  const { page, limit } = req.query;
+  const offset = (page - 1) * limit;
 
-  const history = await getUserChatHistory(userId, limit);
+  const history = await getUserChatHistory(userId, limit, offset);
+  const total = await getUserChatHistoryCount(userId);
 
   // Clean JSON blocks from content for client display and extract tool_calls
   const cleanedHistory = history.map(msg => {
@@ -529,7 +533,8 @@ export async function getChatHistory(req, res) {
   });
 
   return sendSuccess(res, {
-    history: cleanedHistory
+    history: cleanedHistory,
+    pagination: buildPaginationMeta({ page, pageSize: limit, totalItems: total })
   });
 }
 

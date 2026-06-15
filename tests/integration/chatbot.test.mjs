@@ -122,6 +122,11 @@ describe('Chatbot API Integration Tests', () => {
           const found = mockChatMessages.find(m => m.user_id === userId && m.client_msg_id === clientMsgId);
           return [found ? [found] : []];
         }
+        if (normalizedSql.includes('COUNT(*)')) {
+          const userId = params[0];
+          const count = mockChatMessages.filter(m => m.user_id === userId).length;
+          return [[{ total: count }]];
+        }
         if (/\bLIMIT\s+1\b/i.test(normalizedSql)) {
           const last = mockChatMessages[mockChatMessages.length - 1];
           return [last ? [last] : []];
@@ -131,8 +136,20 @@ describe('Chatbot API Integration Tests', () => {
           const filtered = mockChatMessages.filter(m => m.user_id === params[0] && m.session_id === sessionId);
           return [filtered];
         }
-        // General history query
-        return [mockChatMessages];
+        // General history query with LIMIT and OFFSET support
+        let limit = 50;
+        let offset = 0;
+        const limitMatch = /LIMIT\s+(\d+)/i.exec(normalizedSql);
+        const offsetMatch = /OFFSET\s+(\d+)/i.exec(normalizedSql);
+        if (limitMatch) limit = parseInt(limitMatch[1], 10);
+        if (offsetMatch) offset = parseInt(offsetMatch[1], 10);
+
+        const userId = params[0];
+        const userMessages = mockChatMessages.filter(m => m.user_id === userId);
+        const sortedDesc = [...userMessages].sort((a, b) => b.id - a.id);
+        const sliced = sortedDesc.slice(offset, offset + limit);
+        const sortedAsc = sliced.sort((a, b) => a.id - b.id);
+        return [sortedAsc];
       }
       // Wiki queries
       if (normalizedSql.includes('SELECT keyword, content FROM chatbot_wiki')) {
@@ -1924,6 +1941,63 @@ describe('Chatbot API Integration Tests', () => {
     pool.execute = originalExecute;
   });
 
+  it('GET /v1/chatbot/history supports pagination with page and limit', async () => {
+    // Populate mock history with 5 messages
+    mockChatMessages = [
+      { id: 1, user_id: 1, role: 'user', content: 'Msg 1', model: 'gemma-4-e4b', created_at: new Date('2026-06-14T00:00:00Z') },
+      { id: 2, user_id: 1, role: 'assistant', content: 'Resp 1', model: 'gemma-4-e4b', created_at: new Date('2026-06-14T00:00:01Z') },
+      { id: 3, user_id: 1, role: 'user', content: 'Msg 2', model: 'gemma-4-e4b', created_at: new Date('2026-06-14T00:00:02Z') },
+      { id: 4, user_id: 1, role: 'assistant', content: 'Resp 2', model: 'gemma-4-e4b', created_at: new Date('2026-06-14T00:00:03Z') },
+      { id: 5, user_id: 1, role: 'user', content: 'Msg 3', model: 'gemma-4-e4b', created_at: new Date('2026-06-14T00:00:04Z') }
+    ];
+
+    const token = createAccessToken(mockUser);
+
+    // Page 1, limit 2: should return the 2 most recent messages (ids 4, 5) sorted by id ASC -> Resp 2 (id 4) then Msg 3 (id 5).
+    const res1 = await httpRequest(server, 'GET', '/v1/chatbot/history?page=1&limit=2', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    assert.equal(res1.statusCode, 200);
+    assert.equal(res1.body.ok, true);
+    assert.equal(res1.body.history.length, 2);
+    assert.equal(res1.body.history[0].content, 'Resp 2');
+    assert.equal(res1.body.history[1].content, 'Msg 3');
+    assert.equal(res1.body.pagination.page, 1);
+    assert.equal(res1.body.pagination.pageSize, 2);
+    assert.equal(res1.body.pagination.totalItems, 5);
+    assert.equal(res1.body.pagination.totalPages, 3);
+    assert.equal(res1.body.pagination.hasNextPage, true);
+    assert.equal(res1.body.pagination.hasPreviousPage, false);
+
+    // Page 2, limit 2: should return ids 2, 3 sorted ASC -> Resp 1 (id 2), Msg 2 (id 3)
+    const res2 = await httpRequest(server, 'GET', '/v1/chatbot/history?page=2&limit=2', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    assert.equal(res2.statusCode, 200);
+    assert.equal(res2.body.ok, true);
+    assert.equal(res2.body.history.length, 2);
+    assert.equal(res2.body.history[0].content, 'Resp 1');
+    assert.equal(res2.body.history[1].content, 'Msg 2');
+    assert.equal(res2.body.pagination.page, 2);
+    assert.equal(res2.body.pagination.hasNextPage, true);
+    assert.equal(res2.body.pagination.hasPreviousPage, true);
+
+    // Page 3, limit 2: should return id 1 -> Msg 1 (id 1)
+    const res3 = await httpRequest(server, 'GET', '/v1/chatbot/history?page=3&limit=2', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    assert.equal(res3.statusCode, 200);
+    assert.equal(res3.body.ok, true);
+    assert.equal(res3.body.history.length, 1);
+    assert.equal(res3.body.history[0].content, 'Msg 1');
+    assert.equal(res3.body.pagination.page, 3);
+    assert.equal(res3.body.pagination.hasNextPage, false);
+    assert.equal(res3.body.pagination.hasPreviousPage, true);
+  });
+
   it('teardown server and restore mocks', async () => {
     // Restore original methods
     const pool = getPool();
@@ -1934,3 +2008,4 @@ describe('Chatbot API Integration Tests', () => {
     await new Promise((resolve) => server.close(resolve));
   });
 });
+

@@ -105,9 +105,10 @@ export async function getSessionChatHistory(userId, sessionId, limit = null) {
  * Retrieves the chat history for a user, sorted chronologically
  * @param {number} userId
  * @param {number} [limit=50] Number of recent messages to fetch
+ * @param {number} [offset=0] Pagination offset
  * @returns {Promise<Array>} List of chat messages
  */
-export async function getUserChatHistory(userId, limit = 50) {
+export async function getUserChatHistory(userId, limit = 50, offset = 0) {
   const pool = getPool();
   const [rows] = await pool.execute(
     `SELECT role, content, model, session_id, created_at
@@ -116,7 +117,7 @@ export async function getUserChatHistory(userId, limit = 50) {
        FROM chatbot_messages
        WHERE user_id = ?
        ORDER BY id DESC
-       LIMIT ${limit}
+       LIMIT ${limit} OFFSET ${offset}
      ) sub
      ORDER BY id ASC`,
     [userId]
@@ -130,6 +131,21 @@ export async function getUserChatHistory(userId, limit = 50) {
     createdAt: r.created_at ? new Date(r.created_at).toISOString() : null
   }));
 }
+
+/**
+ * Retrieves the total count of chat messages for a user
+ * @param {number} userId
+ * @returns {Promise<number>} Total count of chat messages
+ */
+export async function getUserChatHistoryCount(userId) {
+  const pool = getPool();
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS total FROM chatbot_messages WHERE user_id = ?`,
+    [userId]
+  );
+  return Number(rows[0]?.total || 0);
+}
+
 
 /**
  * Finds wiki entries whose keyword is a substring of the user's message

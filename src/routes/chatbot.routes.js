@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { validateBody } from '../middleware/validate.js';
+import { validateBody, validateQuery } from '../middleware/validate.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { askChatbotSchema, initChatbotSessionSchema } from '../validators/chatbot.validator.js';
+import { askChatbotSchema, initChatbotSessionSchema, chatbotHistoryQuerySchema } from '../validators/chatbot.validator.js';
 import { askChatbot, getChatHistory, initChatbotSession } from '../controllers/chatbot.controller.js';
 
 const router = Router();
@@ -14,6 +14,7 @@ router.post('/init', authenticate, validateBody(initChatbotSessionSchema), async
 router.post('/', authenticate, validateBody(askChatbotSchema), asyncHandler(askChatbot));
 
 // GET /v1/chatbot/history
-router.get('/history', authenticate, asyncHandler(getChatHistory));
+router.get('/history', authenticate, validateQuery(chatbotHistoryQuerySchema), asyncHandler(getChatHistory));
+
 
 export default router;
