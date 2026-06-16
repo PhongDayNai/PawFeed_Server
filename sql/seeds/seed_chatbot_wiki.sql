@@ -1,3 +1,4 @@
+SET NAMES utf8mb4;
 TRUNCATE TABLE chatbot_wiki;
 
 INSERT INTO chatbot_wiki (
