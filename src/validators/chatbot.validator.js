@@ -10,7 +10,8 @@ export const askChatbotSchema = z.object({
   model: z.string().trim().optional(),
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().positive().optional(),
-  clientMsgId: z.string().uuid('clientMsgId must be a valid UUID.').optional()
+  clientMsgId: z.string().uuid('clientMsgId must be a valid UUID.').optional(),
+  stream: z.boolean().optional()
 }).strict();
 
 export const initChatbotSessionSchema = z.object({

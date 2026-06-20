@@ -361,9 +361,11 @@ export const CHATBOT_TOOLS = [
  * @param {number} [params.maxTokens] Max tokens to generate
  * @param {Array} [params.tools] Array of tool objects
  * @param {string|Object} [params.toolChoice] Tool choice configuration
+ * @param {boolean} [params.stream] Whether to stream the response
+ * @param {Function} [params.onStreamChunk] Callback triggered with each stream text chunk
  * @returns {Promise<Object>} The response message object { role, content, tool_calls }
  */
-export async function getChatCompletion({ messages, model, temperature, maxTokens, tools, toolChoice }) {
+export async function getChatCompletion({ messages, model, temperature, maxTokens, tools, toolChoice, stream, onStreamChunk }) {
   const url = `${env.ai.baseUrl.replace(/\/$/, '')}/chat/completions`;
 
   const headers = {
@@ -380,10 +382,87 @@ export async function getChatCompletion({ messages, model, temperature, maxToken
     temperature: temperature ?? 0.7,
     ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
     ...(tools !== undefined ? { tools } : {}),
-    ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {})
+    ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
+    ...(stream !== undefined ? { stream } : {})
   };
 
   try {
+    if (stream) {
+      const response = await axios.post(url, payload, { headers, timeout: 120000, responseType: 'stream' });
+      
+      let accumulatedContent = '';
+      const accumulatedToolCalls = [];
+
+      return new Promise((resolve, reject) => {
+        let buffer = '';
+
+        response.data.on('data', (chunk) => {
+          buffer += chunk.toString();
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (trimmed === 'data: [DONE]') {
+              continue;
+            }
+            if (trimmed.startsWith('data: ')) {
+              const jsonStr = trimmed.slice(6);
+              try {
+                const parsed = JSON.parse(jsonStr);
+                const choice = parsed.choices?.[0];
+                if (choice && choice.delta) {
+                  const delta = choice.delta;
+                  
+                  if (delta.tool_calls) {
+                    for (const tc of delta.tool_calls) {
+                      const idx = tc.index;
+                      if (!accumulatedToolCalls[idx]) {
+                        accumulatedToolCalls[idx] = {
+                          id: tc.id,
+                          type: tc.type,
+                          function: { name: tc.function?.name || '', arguments: '' }
+                        };
+                      }
+                      if (tc.id) accumulatedToolCalls[idx].id = tc.id;
+                      if (tc.type) accumulatedToolCalls[idx].type = tc.type;
+                      if (tc.function?.name) accumulatedToolCalls[idx].function.name = tc.function.name;
+                      if (tc.function?.arguments) {
+                        accumulatedToolCalls[idx].function.arguments += tc.function.arguments;
+                      }
+                    }
+                  }
+
+                  if (delta.content) {
+                    accumulatedContent += delta.content;
+                    if (onStreamChunk && accumulatedToolCalls.length === 0) {
+                      onStreamChunk({ content: delta.content });
+                    }
+                  }
+                }
+              } catch (e) {
+                // Ignore parse errors on invalid JSON chunks
+              }
+            }
+          }
+        });
+
+        response.data.on('end', () => {
+          const finalMessage = {
+            role: 'assistant',
+            content: accumulatedContent || null,
+            tool_calls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls.filter(Boolean) : undefined
+          };
+          resolve(finalMessage);
+        });
+
+        response.data.on('error', (err) => {
+          reject(err);
+        });
+      });
+    }
+
     const response = await axios.post(url, payload, { headers, timeout: 120000 });
     
     const choice = response.data?.choices?.[0];

@@ -215,7 +215,7 @@ export const NOMI_SYSTEM_PROMPT = `${NOMI_SYSTEM_PROMPT_PREFIX}\n\n${NOMI_SYSTEM
  * Handles chatbot completion requests and records the interaction history
  */
 export async function askChatbot(req, res) {
-  const { messages, model, temperature, maxTokens, clientMsgId } = req.body;
+  const { messages, model, temperature, maxTokens, clientMsgId, stream } = req.body;
   const userId = req.auth.userId;
 
   // 1. Resolve model name
@@ -326,6 +326,7 @@ export async function askChatbot(req, res) {
   let loopCount = 0;
   const maxLoops = 5;
   let currentResponse = null;
+  let headersSent = false;
 
   while (loopCount < maxLoops) {
     const aiResponse = await getChatCompletion({
@@ -333,7 +334,19 @@ export async function askChatbot(req, res) {
       model,
       temperature,
       maxTokens,
-      tools: CHATBOT_TOOLS
+      tools: CHATBOT_TOOLS,
+      stream: !!stream,
+      onStreamChunk: (chunk) => {
+        if (!headersSent) {
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.setHeader('Cache-Control', 'no-cache');
+          res.setHeader('Connection', 'keep-alive');
+          res.setHeader('X-Accel-Buffering', 'no');
+          res.flushHeaders();
+          headersSent = true;
+        }
+        res.write(`data: ${JSON.stringify({ sessionId, content: chunk.content })}\n\n`);
+      }
     });
 
     currentResponse = aiResponse;
@@ -488,6 +501,39 @@ export async function askChatbot(req, res) {
       model: resolvedModel,
       sessionId
     });
+  }
+
+  if (stream) {
+    if (!headersSent) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders();
+      headersSent = true;
+    }
+
+    if (currentResponse?.tool_calls && currentResponse.tool_calls.length > 0) {
+      const formattedToolCalls = currentResponse.tool_calls.map(tc => {
+        let parsedArgs = tc.function.arguments;
+        if (typeof parsedArgs === 'string') {
+          try { parsedArgs = JSON.parse(parsedArgs); } catch (e) { }
+        }
+        return {
+          id: tc.id,
+          type: tc.type,
+          function: {
+            name: tc.function.name,
+            arguments: parsedArgs
+          }
+        };
+      });
+      res.write(`data: ${JSON.stringify({ sessionId, tool_calls: formattedToolCalls })}\n\n`);
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+    return;
   }
 
   return sendSuccess(res, {
