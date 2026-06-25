@@ -1,670 +1,296 @@
-# Pet Feeder Server
+# PawFeed IoT Ecosystem - Repositories
 
-Backend API server and database tooling for the Pet Feeder IoT system.
+This document maps all the repositories that form the **PawFeed IoT Ecosystem**. Click on the links below to navigate to each component.
 
-The service runs an Express API backed by MySQL. It provides authentication, account management, admin-only device provisioning, pairing-code and QR payload generation, user device ownership, current device configuration, signed config file generation, feeding schedule storage, MQTT credential storage, health checks, and database migration/seed scripts.
+---
 
-## Features
+# [PawFeed_Server](https://github.com/PhongDayNai/PawFeed_Server)
 
-- Express API runtime with JSON request parsing, CORS, Helmet, request logging, and rate limiting.
-- Standard JSON success and error responses.
-- Shared response helpers, pagination metadata, and structured validation errors.
-- Health check endpoint: `GET /api/health`.
-- MySQL connection pooling with `mysql2/promise`.
-- SQL migration, seed, reset, and status scripts.
-- JWT authentication with access and refresh tokens.
-- User registration, login, logout, refresh, current-user, password-change, and profile-update APIs.
-- Role-based admin routes.
-- Admin device provisioning APIs.
-- User device linking and ownership APIs.
-- User-managed current device configuration APIs for Wi-Fi, location, timezone, and setup AP settings.
-- Feeding schedule storage with strict time validation, duration limits, and apply-status reporting.
-- HMAC-signed device config file generation and generation history APIs.
-- Machine compatibility tooling for config-file signing payload inspection and comparison.
-- Optional MQTT connection service with default subscriptions for device online, state, telemetry, event, and ack topics.
-- MQTT inbound handlers that update device status, telemetry timestamps, events, command acknowledgements, config apply status, and feeding history.
-- Remote feed-now command APIs with user command status lookup and admin command history filtering.
-- Optional background workers for command timeouts and stale-device offline detection.
-- User and admin operation log APIs for device events, feeding history, and config generation history.
-- User dashboard summary API and paginated device listing with filters.
-- Full admin management APIs for dashboard, users, devices, MQTT servers, credentials, system settings, and audit logs.
-- Admin MQTT connection testing and safer MQTT credential/device secret rotation flows.
-- Runtime system settings for provider metadata, config defaults, and worker timeout values.
-- Audit log metadata, actor role tracking, secret masking, filtering, and CSV export.
-- Security hardening with request IDs, Helmet headers, optional HTTPS enforcement, production startup checks, prototype pollution protection, secret redaction, and tighter rate limits for sensitive endpoints.
-- Runtime endpoint catalog through Express routes and deployment assets.
-- Static specification compliance checklist and generated compliance reports for source, routes, migrations, and runtime assets.
-- Automatic generation of device IDs, machine codes, pairing codes, device secrets, and MQTT credentials.
-- Device QR payload generation.
-- Pairing-code rotation.
-- User-facing device rename support.
-- Audit logs for admin device operations.
-- Docker and Docker Compose runtime for local development and deployment testing.
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-blue.svg)](https://nodejs.org/)
+[![Express Version](https://img.shields.io/badge/express-v4.21.2-green.svg)](https://expressjs.com/)
+[![MySQL Version](https://img.shields.io/badge/mysql-8.4-orange.svg)](https://www.mysql.com/)
+[![MQTT Protocol](https://img.shields.io/badge/mqtt-v5.0-purple.svg)](https://mqtt.org/)
 
-## Tech Stack
+The core backend API server, background workers, database management tools, and MQTT handlers for the **PawFeed IoT Ecosystem**. Built with Node.js, Express, MySQL, and Mosquitto MQTT, it orchestrates secure communication between hardware devices, user clients, and AI services.
 
-- Node.js 20+
-- Express 4
-- MySQL 8.4
-- Docker and Docker Compose
-- JWT
-- Zod
-- MQTT client library
+## 🚀 Key Features of Backend Server
 
-## Project Structure
+### 1. Authentication & Security Hardening
+- **Access & Refresh JWT Tokens**: Secure authentication with strict expiration rules and token rotation on the mobile client.
+- **Role-Based Authorization**: Distinct access levels for standard **Users** (pet owners) and **Admins**.
+- **Audit Logs**: Transparently records sensitive operations (e.g. key rotations, device provisioning) with actor role tracking, metadata JSON, and CSV export.
+- **Request Protection**: Integrated Helmet headers, CORS filters, request ID propagation, prototype pollution guard, and custom rate-limit rules.
+
+### 2. Device Provisioning & Pairing
+- **Admin Claim Flow**: Devices are initialized in the DB with automatic unique IDs, random pairing codes, and cryptographic secrets.
+- **Pairing-Code Rotation**: Secures device ownership claims. QR payload generation is supported for easy mobile onboarding.
+- **Ownership Linking**: Safely binds hardware to user accounts. Prevents duplicate linking and tracks registration history.
+
+### 3. Secure Cryptographic Configs (Config Lifecycle)
+- **HMAC-SHA256 Signatures**: Generates signed JSON configurations (Wi-Fi details, timezone, schedule structure) using the device's unique `device_secret`.
+- **Local SoftAP Provisioning**: The mobile app downloads the signed config file from the server, connects to the device's local Access Point (`192.168.4.1`), and uploads it. The ESP8266 verifies the HMAC signature using its on-chip secret before applying the configuration, shielding the hardware from tampered firmware inputs.
+
+### 4. Remote Feeding Controls (MQTT & SSE)
+- **Remote "Feed Now" Command**: Sends instantaneous feed orders through MQTT (`feeder/:deviceId/cmd`).
+- **SSE Stream**: Keeps clients updated in real time. Changes in device state, command acknowledgment, and feeding statuses are broadcasted via Server-Sent Events (`/v1/events/stream`).
+- **Offline Queueing**: If a device is offline, commands are queued and flushed immediately upon reconnection.
+
+### 5. Automated Feeding Schedules & Telemetry
+- **Daily Schedule Manager**: Supports up to 20 meals, strict timezone-offset conversions, and open-duration limits (100ms - 10mins).
+- **Telemetry Processing**: Parses real-time diagnostic reports (Wi-Fi RSSI, Heap size, Uptime, Internal epoch, door state).
+- **Feeding Histories**: Tracks complete feeding outcomes (completed, failed, manual, scheduled) in the DB.
+
+### 6. Nomi AI Assistant (Chatbot & Function Calling)
+- **Local AI Service Integration**: Communicates with a self-hosted `llama.cpp` server running the Gemma-4 model.
+- **Dynamic System Prompt**: Automatically injects long-term **User Memory** (pet names, breed, weight, food specs) and **Wiki Context** (product specifications) into the AI payload.
+- **Function Calling Loop**: Nomi can query device statuses, fetch feeding history, compute recommended food weights, and propose physical actions (e.g. suggesting a feed-now order or a schedule update), which the client presents as approval prompts.
+
+### 7. Background Workers
+- **Command Timeout Worker**: Periodically checks and timeouts commands that lack hardware ACK or execution events.
+- **Device Offline Worker**: Detects stale devices that have missed telemetry heartbeats for over 60s, marking them offline.
+
+## 🛠️ Technology Stack
+
+- **Runtime**: Node.js v20+ (ES Modules)
+- **API Framework**: Express v4.21.2
+- **Database**: MySQL 8.4 (using `mysql2/promise` connection pooling)
+- **IoT Message Broker**: Mosquitto MQTT Broker (via `mqtt` v5.10.3)
+- **LLM Engine**: Self-hosted `llama.cpp` (OpenAI Compatible API)
+- **Input Validation**: Zod v3.24.1
+- **Security Utilities**: bcryptjs, jsonwebtoken, helmet, express-rate-limit
+
+## 📂 Project Structure
 
 ```text
-pet-feeder-server/
+PawFeed_Server/
 ├── Dockerfile
-├── deploy/
-├── docker-compose.yml
+├── deploy/                 # Docker Compose deployment & server configs
+├── docker-compose.yml      # Multi-container local orchestration
+├── docs/                   # Full system, use-case, and API specifications
 ├── package.json
-├── scripts/
-│   ├── check-health.mjs
-│   ├── db.migrate.mjs
-│   ├── db.reset.mjs
-│   ├── db.seed.mjs
-│   ├── db.status.mjs
-│   └── db/
+├── scripts/                # Utility scripts (health, db migrate/seed, scan)
 ├── sql/
-│   ├── migrations/
-│   └── seeds/
+│   ├── migrations/         # SQL files for database schema versioning
+│   └── seeds/              # Seed data for local testing
 └── src/
-    ├── app.js
-    ├── server.js
-    ├── config/
-    ├── controllers/
-    ├── middleware/
-    ├── routes/
-    ├── services/
-    ├── utils/
-    └── validators/
+    ├── app.js              # Express app initialization & middleware configuration
+    ├── server.js           # Server startup (HTTP port bind & MQTT client boot)
+    ├── cli/                # Terminal tooling
+    ├── config/             # Environment, DB, JWT, and worker parameters
+    ├── controllers/        # Request handling and controller business logic
+    ├── middleware/         # Auth, Rate limiting, Security guards, Error handling
+    ├── mqtt/               # MQTT connection service, routers, and handlers
+    ├── routes/             # RESTful API route registers
+    ├── services/           # DB queries, AI prompt builder, and core logic
+    ├── utils/              # Cryptography, response helpers, and validation
+    ├── validators/         # Input schemas (Zod)
+    └── workers/            # Stale device monitor and command timeout worker
 ```
 
-## Environment
+## 🔌 System Architecture & Data Flow
 
-Create a local environment file:
+Below is the deployment and network architecture of the entire ecosystem:
 
-```bash
-cp .env.example .env
+```mermaid
+graph TB
+    subgraph ClientZone ["🌐 Client Zone (Internet)"]
+        Mobile["📱 Android Mobile App<br/>(Jetpack Compose)"]
+        Web["💻 Next.js Web Client<br/>(React / TypeScript)"]
+    end
+
+    subgraph HardwareZone ["🏠 Edge Hardware Zone (Local Network)"]
+        Feeder["🤖 ESP8266 Feeder Device<br/>(MCU Core)"]
+        Router["📶 Router Wi-Fi Gia đình"]
+        FeederAP["📡 ESP8266 SoftAP<br/>(192.168.4.1 Cục bộ)"]
+    end
+
+    subgraph CloudZone ["☁️ Cloud Server Zone (Docker Compose Network)"]
+        Tunnel["☁️ Cloudflare Tunnel (cloudflared)<br/>(Secure Ingress)"]
+        
+        subgraph BackendStack ["Backend Core Stack"]
+            Server["Express API Server<br/>(Node.js Core)"]
+            Workers["Background Workers<br/>(Timeout & Offline Managers)"]
+        end
+
+        Broker[" Mosquitto MQTT Broker<br/>(Ports: 1883 / 8883 TLS)"]
+        DB[(" MySQL 8.4 Database<br/>(Port: 3306)")]
+        AIService["🤖 Self-hosted AI Service<br/>(Llama.cpp / Gemma API)"]
+    end
+
+    subgraph ExternalServices ["🌐 External Services Zone (Internet)"]
+        NtpServer["⏰ NTP Time Servers<br/>(pool.ntp.org)"]
+        CFEdge["☁️ Cloudflare Edge<br/>(SSL/HSTS, WAF, CDN)"]
+    end
+
+    Mobile -->|HTTPS / Port 443| CFEdge
+    Web -->|HTTPS / SSE / Port 443| CFEdge
+    CFEdge <-->|Secure Tunnel| Tunnel
+    Tunnel -->|Local HTTP / Port 3000| Server
+    Workers <-->|Read / Write| DB
+    Server <-->|Connection Pool / Port 3306| DB
+
+    Mobile <-->|Local HTTP Upload / Port 80| FeederAP
+    FeederAP <-->|Cấu hình AP nội bộ| Feeder
+
+    Feeder -->|Wi-Fi Connection| Router
+    Router -->|MQTT TCP / TLS / Ports: 1883 or 8883| Broker
+    Server <-->|MQTT PubSub / Port 1883| Broker
+
+    Server -->|Local HTTP / Port 8080| AIService
+    Feeder -->|NTP UDP / Port 123| NtpServer
 ```
 
-Important variables:
+## ⚡ Setup & Local Development
 
-- `NODE_ENV`: runtime environment, for example `development` or `production`.
-- `APP_NAME`: service name returned by health checks.
-- `APP_VERSION`: service version returned by health checks.
-- `PORT`: internal API server port.
-- `HOST`: bind address. Use `0.0.0.0` inside Docker.
-- `CORS_ORIGIN`: `*` or a comma-separated list of allowed origins.
-- `JSON_BODY_LIMIT`: Express JSON body size limit.
-- `RATE_LIMIT_WINDOW_MS`: rate limit window for `/api/*`.
-- `RATE_LIMIT_MAX`: max requests per rate limit window.
-- `TRUST_PROXY`: enables trusted proxy handling for deployments behind a load balancer or reverse proxy.
-- `REQUIRE_HTTPS`: rejects plain HTTP requests when HTTPS is required by the deployment.
-- `REQUEST_ID_HEADER`: inbound request ID header name.
-- `REJECT_PROTOTYPE_POLLUTION`: rejects request payloads containing reserved object keys.
-- `HSTS_MAX_AGE_SEC`: max age for production HSTS headers.
-- `AUTH_RATE_LIMIT_*`, `LINK_DEVICE_RATE_LIMIT_*`, `FEED_NOW_RATE_LIMIT_*`, `CONFIG_GENERATION_RATE_LIMIT_*`, `ADMIN_SENSITIVE_RATE_LIMIT_*`: endpoint-specific rate limit settings.
-- `ENABLE_DEV_ERROR_ROUTE`: enables `GET /api/dev/error` outside production.
-- `APP_PORT`: public host port used by Docker Compose for the API server.
-- `MYSQL_PORT`: localhost-only host port used by Docker Compose for MySQL.
-- `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_ROOT_PASSWORD`: MySQL container settings.
-- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`: app database connection settings.
-- `DB_CONNECTION_LIMIT`: MySQL pool connection limit.
-- `DB_SSL`: enables SSL for app database connections.
-- `DB_ALLOW_RESET`: required before `npm run db:reset -- --force` can reset a non-production database.
-- `CONFIG_FILE_TTL_SEC`: generated config file lifetime in seconds.
-- `DEFAULT_TIMEZONE`, `DEFAULT_TIMEZONE_OFFSET_SEC`, `DEFAULT_KEEP_SETUP_AP_ENABLED`: defaults used when generating config files.
-- `PROVIDER_NAME`, `PROVIDER_BRAND`, `PROVIDER_WEBSITE`, `PROVIDER_CONTACT`, `PROVIDER_NOTE`: provider metadata included in generated config files.
-- `MQTT_ENABLED`: enables the server-side MQTT connection service.
-- `MQTT_BROKER_HOST`, `MQTT_BROKER_PORT`, `MQTT_BROKER_USE_TLS`: broker connection settings.
-- `MQTT_SERVICE_USERNAME`, `MQTT_SERVICE_PASSWORD`, `MQTT_CLIENT_ID`: service client credentials and identity.
-- `MQTT_KEEPALIVE_SEC`, `MQTT_CONNECT_TIMEOUT_MS`, `MQTT_RECONNECT_PERIOD_MS`: MQTT connection timing settings.
-- `MQTT_SUBSCRIBE_QOS`, `MQTT_PUBLISH_QOS`, `MQTT_TLS_REJECT_UNAUTHORIZED`: MQTT subscription, publish, and TLS behavior.
-- `WORKERS_ENABLED`, `WORKERS_RUN_ON_START`, `WORKERS_LOG_NOOP_RUNS`: background worker runtime controls.
-- `COMMAND_TIMEOUT_WORKER_ENABLED`, `COMMAND_TIMEOUT_WORKER_INTERVAL_MS`, `COMMAND_ACK_TIMEOUT_SEC`, `COMMAND_COMPLETE_TIMEOUT_SEC`: command timeout worker settings.
-- `DEVICE_OFFLINE_WORKER_ENABLED`, `DEVICE_OFFLINE_WORKER_INTERVAL_MS`, `DEVICE_ONLINE_TTL_SEC`: stale-device offline worker settings.
-- `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`: secrets used to sign access and refresh tokens.
-- `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN`: JWT expiration windows.
-- `BCRYPT_SALT_ROUNDS`: bcrypt hashing cost for user passwords.
-- `SEED_MQTT_HOST`, `SEED_MQTT_PORT`, `SEED_MQTT_TLS_PORT`, `SEED_MQTT_WEBSOCKET_PORT`: seeded MQTT broker connection metadata.
-- `SEED_*`: seed data for the initial admin account, MQTT server, and demo device.
+### 1. Requirements
+Ensure you have the following installed locally:
+- **Node.js** (version >= 20.0.0)
+- **MySQL** 8.4 or Docker
 
-Change all default MySQL, admin, demo-device, MQTT, and JWT secret values before running this on a shared machine or production server.
-
-## Local Development
-
-Install dependencies:
-
+### 2. Initial Setup
+Clone the repository, enter the directory, and install dependencies:
 ```bash
 npm install
 ```
 
-Start the development server:
+Create your local environment file:
+```bash
+cp .env.example .env
+```
+Open `.env` and configure your database settings, JWT secrets, and MQTT broker details.
 
+### 3. Database Migration & Seeding
+Configure your MySQL database, then run the utility scripts:
+```bash
+# Check current migration status
+npm run db:status
+
+# Run all migrations to build the tables
+npm run db:migrate
+
+# Seed dummy data (default Admin, local-broker, and feeder001 device)
+npm run db:seed
+```
+
+#### Default Seed Credentials
+- **Admin Login**:
+  - Email: `admin@example.com`
+  - Password: `Admin@123456`
+- **Seeded Hardware Device**:
+  - `deviceId`: `feeder001`
+  - `machineCode`: `PF-ESP8266-001`
+  - `pairingCode`: `A8K2-91PQ`
+  - `deviceSecret`: `CHANGE_ME_DEVICE_SECRET`
+  - `mqttUsername`: `feeder001`
+  - `mqttPassword`: `feeder001_dev_password`
+
+### 4. Running the Server
+Run the Express API server and background processes in development mode:
 ```bash
 npm run dev
 ```
 
-Run a production-style local server:
-
+For production deployment:
 ```bash
 npm start
 ```
+The server binds to `http://localhost:3000` by default.
 
-The API listens on `http://localhost:3000` by default.
-
-## Docker Compose
-
-Start the API server and MySQL:
-
+### 5. Running Code Verification
+Ensure the codebase adheres to standard rules and runs securely:
 ```bash
-docker compose up -d --build
-```
+# Verify syntax correctness
+npm run check
 
-MySQL is exposed only on `127.0.0.1:${MYSQL_PORT:-3306}` on the host. The API server connects to it through the internal Docker network with `DB_HOST=db`.
+# Check API health status
+npm run health
 
-Run migrations and seeds inside the server container:
-
-```bash
-docker compose exec server npm run db:migrate
-docker compose exec server npm run db:seed
-```
-
-Check container status and the API health endpoint:
-
-```bash
-docker compose ps
-curl http://localhost:3000/api/health
-```
-
-Run compatibility and static checks:
-
-```bash
-npm run phase8:generate-sample
+# Validate API specifications
 npm run spec:check
+
+# Scan database and config files for secrets leaks
 npm run security:scan
 ```
 
-Stop the containers:
-
-```bash
-docker compose down
-```
-
-Stop the containers and remove the MySQL volume:
-
-```bash
-docker compose down -v
-```
-
-Use `docker compose down -v` only when you intentionally want to delete local database data.
-
-## Database Commands
-
-Check migration status:
-
-```bash
-npm run db:status
-```
-
-Apply pending migrations:
-
-```bash
-npm run db:migrate
-```
-
-Apply seed data:
-
-```bash
-npm run db:seed
-```
-
-Reset a non-production database:
-
-```bash
-DB_ALLOW_RESET=true npm run db:reset -- --force
-```
-
-The migration runner records executed files in `schema_migrations` with checksums. If a migration file changes after execution, the runner fails instead of silently reapplying changed SQL.
-
-## Seed Data
-
-Default admin account:
-
-```text
-email: admin@example.com
-password: Admin@123456
-```
-
-Default demo device:
-
-```text
-deviceId: feeder001
-machineCode: PF-ESP8266-001
-pairingCode: A8K2-91PQ
-deviceSecret: CHANGE_ME_DEVICE_SECRET
-mqttUsername: feeder001
-mqttPassword: feeder001_dev_password
-```
-
-Default MQTT server metadata:
-
-```text
-name: local-broker
-host: 127.0.0.1
-mqttPort: 1883
-tlsPort: 8883
-websocketPort: 9001
-useTls: false
-```
-
-The backend stores MQTT credentials in MySQL. It does not automatically create users in Mosquitto. If the broker requires username/password authentication, create or sync the same MQTT accounts on the broker before testing device connections.
-
-## API Endpoints
-
-The Express route files under `src/routes/` are the source of truth for API endpoints.
-
-### Health
-
-```bash
-curl http://localhost:3000/api/health
-```
-
-### Authentication
-
-Register a user:
-
-```bash
-curl -X POST http://localhost:3000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "fullName": "Test User",
-    "email": "user@example.com",
-    "password": "User@123456"
-  }'
-```
-
-Log in with the seeded admin account:
-
-```bash
-curl -X POST http://localhost:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "admin@example.com",
-    "password": "Admin@123456"
-  }'
-```
-
-Use the returned access token for protected APIs:
-
-```bash
-TOKEN="YOUR_ACCESS_TOKEN"
-```
-
-Get the current user:
-
-```bash
-curl http://localhost:3000/api/auth/me \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Refresh tokens:
-
-```bash
-curl -X POST http://localhost:3000/api/auth/refresh \
-  -H "Content-Type: application/json" \
-  -d '{
-    "refreshToken": "YOUR_REFRESH_TOKEN"
-  }'
-```
-
-Log out:
-
-```bash
-curl -X POST http://localhost:3000/api/auth/logout \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Change password:
-
-```bash
-curl -X POST http://localhost:3000/api/auth/change-password \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "currentPassword": "OldPassword@123",
-    "newPassword": "NewPassword@123"
-  }'
-```
-
-### Account
-
-Update profile:
-
-```bash
-curl -X PATCH http://localhost:3000/api/account/profile \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "fullName": "Updated Name"
-  }'
-```
-
-### Admin
-
-Check admin access:
-
-```bash
-curl http://localhost:3000/api/admin/ping \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Create a device with generated values:
-
-```bash
-curl -X POST http://localhost:3000/api/admin/devices \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "firmwareVersion": "1.0.0-dev"
-  }'
-```
-
-Create a device with explicit values:
-
-```bash
-curl -X POST http://localhost:3000/api/admin/devices \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "deviceId": "feeder002",
-    "machineCode": "PF-ESP8266-002",
-    "pairingCode": "B7K2-91PQ",
-    "deviceSecret": "CHANGE_ME_DEVICE_SECRET",
-    "firmwareVersion": "1.0.0-dev",
-    "mqttUsername": "feeder002",
-    "mqttPassword": "feeder002_dev_password"
-  }'
-```
-
-List devices:
-
-```bash
-curl http://localhost:3000/api/admin/devices \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Filter devices:
-
-```bash
-curl "http://localhost:3000/api/admin/devices?q=PF-ESP8266&page=1&limit=20" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Get device detail:
-
-```bash
-curl http://localhost:3000/api/admin/devices/feeder001 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Get QR payload:
-
-```bash
-curl http://localhost:3000/api/admin/devices/feeder001/qr \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Get pairing-code status:
-
-```bash
-curl http://localhost:3000/api/admin/devices/feeder001/pairing-code/status \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Rotate pairing code:
-
-```bash
-curl -X POST http://localhost:3000/api/admin/devices/feeder001/rotate-pairing-code \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Admin list and detail responses mask pairing codes and MQTT passwords. Device secrets are not returned by the admin list/detail, QR, or status endpoints.
-
-### User Devices
-
-Link a device to the authenticated user:
-
-```bash
-curl -X POST http://localhost:3000/api/devices/link \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "machineCode": "PF-ESP8266-001",
-    "pairingCode": "A8K2-91PQ"
-  }'
-```
-
-List linked devices:
-
-```bash
-curl http://localhost:3000/api/devices \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Get linked device detail:
-
-```bash
-curl http://localhost:3000/api/devices/feeder001 \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Get latest device status:
-
-```bash
-curl http://localhost:3000/api/devices/feeder001/status \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Get current device configuration:
-
-```bash
-curl http://localhost:3000/api/devices/feeder001/current-config \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Save current device configuration:
-
-```bash
-curl -X PUT http://localhost:3000/api/devices/feeder001/current-config \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "wifiSsid": "Home_Wifi_5G",
-    "wifiPassword": "12345678",
-    "address": "Kitchen",
-    "addressNote": "Near the window",
-    "timezone": "Asia/Bangkok",
-    "timezoneOffsetSec": 25200,
-    "keepSetupApEnabled": false
-  }'
-```
-
-Get feeding schedule:
-
-```bash
-curl http://localhost:3000/api/devices/feeder001/schedule \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Save feeding schedule:
-
-```bash
-curl -X PUT http://localhost:3000/api/devices/feeder001/schedule \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "enabled": true,
-    "timezone": "Asia/Bangkok",
-    "timezoneOffsetSec": 25200,
-    "items": [
-      {
-        "time": "07:00",
-        "openDurationMs": 1200,
-        "enabled": true
-      },
-      {
-        "time": "18:30",
-        "openDurationMs": 1500,
-        "enabled": true
-      }
-    ]
-  }'
-```
-
-Get schedule apply status:
-
-```bash
-curl http://localhost:3000/api/devices/feeder001/schedule/apply-status \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Generate a signed config file and return it as JSON:
-
-```bash
-curl -X POST "http://localhost:3000/api/devices/feeder001/config-file?mode=json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "wifiSsid": "Home_Wifi_5G",
-    "wifiPassword": "12345678",
-    "address": "Kitchen",
-    "addressNote": "Near the window",
-    "timezone": "Asia/Bangkok",
-    "timezoneOffsetSec": 25200,
-    "keepSetupApEnabled": false,
-    "feedingSchedule": {
-      "enabled": true,
-      "items": [
-        {
-          "id": "meal_1",
-          "time": "07:00",
-          "openDurationMs": 1200,
-          "enabled": true
-        }
-      ]
-    }
-  }'
-```
-
-Download a signed config file:
-
-```bash
-curl -X POST http://localhost:3000/api/devices/feeder001/config-file \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -o feeder001 \
-  -d '{
-    "wifiSsid": "Home_Wifi_5G",
-    "wifiPassword": "12345678",
-    "feedingSchedule": {
-      "enabled": true,
-      "items": [
-        {
-          "time": "07:00",
-          "openDurationMs": 1200,
-          "enabled": true
-        }
-      ]
-    }
-  }'
-```
-
-Regenerate a signed config file from the saved current config and schedule:
-
-```bash
-curl -X POST "http://localhost:3000/api/devices/feeder001/config-file/regenerate?mode=json" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-List generated config files:
-
-```bash
-curl "http://localhost:3000/api/devices/feeder001/config-generations?page=1&limit=20" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Rename a linked device:
-
-```bash
-curl -X PATCH http://localhost:3000/api/devices/feeder001 \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "displayName": "Kitchen Feeder"
-  }'
-```
-
-Unlink a device:
-
-```bash
-curl -X POST http://localhost:3000/api/devices/feeder001/unlink \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Only the owner can list, read, rename, get status for, or unlink a linked device. A used pairing code remains used after unlinking until an admin rotates it.
-
-## MQTT Broker Accounts
-
-For local broker testing, create accounts matching the device credentials stored in MySQL.
-
-Example Mosquitto commands:
-
-```bash
-docker compose -f /path/to/mqtt-server/docker-compose.yml \
-  exec -T mosquitto \
-  sh -lc "mosquitto_passwd -b /mosquitto/config/passwords server 'server_strong_password' && \
-          mosquitto_passwd -b /mosquitto/config/passwords feeder001 'feeder001_dev_password'"
-```
-
-Reload Mosquitto after changing the password file:
-
-```bash
-docker kill -s HUP pet-feeder-mqtt
-```
-
-If reload is not available, restart the broker container.
-
-## Validation
-
-Run syntax checks:
-
-```bash
-npm run check
-```
-
-Run a health check against a running server:
-
-```bash
-npm run health
-```
-
-Validate runtime artifacts:
-
-```bash
-npm run spec:check
-```
-
-## Deployment Notes
-
-Local infrastructure and production environment examples are available under `deploy/`.
-
-## Security Notes
-
-- Use long, random, different values for `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET`.
-- Change default seed passwords before using shared environments.
-- Treat `device_secret` and `mqtt_password` as sensitive values.
-- Admin APIs should be exposed only behind authenticated and authorized access.
-- MQTT credentials stored in MySQL must be synced to the broker separately unless a broker-sync worker is added.
+## 🐳 Docker Compose Deployment
+
+If you want to run the whole server stack (API server and MySQL container) using Docker Compose:
+
+1. Build and run containers:
+   ```bash
+   docker compose up -d --build
+   ```
+2. Run database setup inside the container:
+   ```bash
+   docker compose exec server npm run db:migrate
+   ```
+3. (Optional) Run seeding:
+   ```bash
+   docker compose exec server npm run db:seed
+   ```
+4. Verify server health:
+   ```bash
+   curl http://localhost:3000/v1/health
+   ```
+5. Tear down containers:
+   ```bash
+   docker compose down
+   # To clean up persistent MySQL volumes as well:
+   docker compose down -v
+   ```
+
+## 🤖 Nomi AI Assistant & Function Calling Details
+
+Nomi runs on a local LLM, utilizing a dynamic system context containing pet details stored in MySQL (`chatbot_user_memories`) and technical documents stored in `chatbot_wiki`.
+
+The chatbot server parses responses. When the LLM requests a tool execution, the server processes it:
+1. **Internal Tools** (e.g. `calculateDailyFoodRequirement`, `updateUserMemory`, `getUserDeviceDetail`) execute silenty on the server and return calculations or queries to the LLM.
+2. **Interactive Tools** (e.g. `proposeFeedNow`, `proposeSaveSchedule`) pause the AI loop. The API returns the raw `tool_calls` back to the user client.
+3. The mobile/web frontend intercepts this, draws a **confirmation card** (e.g. *"Would you like to feed Milo 20g now?"*), and executes the physical API once the user clicks "Approve".
+
+## 📜 API Catalog Summary
+
+Detailed documentation is available in [api-endpoints.md](file:///home/dhpho/workspace/PawFeed/src/pet-feeder-server/docs/api-endpoints.md). Key routing endpoints:
+
+| Endpoint | Method | Role | Description |
+| :--- | :---: | :---: | :--- |
+| `/v1/health` | `GET` | Public | Returns service runtime health state |
+| `/v1/auth/register` | `POST` | Public | Registers a new user account |
+| `/v1/auth/login` | `POST` | Public | Auths user, returns Access/Refresh JWTs |
+| `/v1/auth/refresh` | `POST` | Public | Obtains a new Access Token |
+| `/v1/devices` | `GET` | User | Lists linked devices owned by the user |
+| `/v1/devices/link` | `POST` | User | Links a device using pairing code & machine code |
+| `/v1/devices/:deviceId/commands/feed-now` | `POST` | User | Dispatches an MQTT remote feed now command |
+| `/v1/devices/:deviceId/config-file` | `POST` | User | Computes and returns signed config files |
+| `/v1/events/stream` | `GET` | User | Establishes SSE stream connection |
+| `/v1/chatbot/init` | `POST` | User | Initializes chatbot session |
+| `/v1/chatbot` | `POST` | User | Sends queries, returns AI streaming / tool calls |
+| `/v1/admin/devices` | `POST` | Admin | Provisions a new physical device in the system |
+| `/v1/admin/audit-logs` | `GET` | Admin | Fetches system audit logs (CSV export supported) |
+
+---
+
+# [PawFeed_Web](https://github.com/PhongDayNai/PawFeed_Web)
+
+The Next.js web application client dashboard for the PawFeed IoT system.
+
+- **Repository Link**: [https://github.com/PhongDayNai/PawFeed_Web](https://github.com/PhongDayNai/PawFeed_Web)
+- **Details**: Refer to the Web repository for source code, setup instructions, and frontend features.
+
+---
+
+# [PawFeed_App](https://github.com/PhongDayNai/PawFeed_App)
+
+The Jetpack Compose Android mobile client application for the PawFeed IoT system.
+
+- **Repository Link**: [https://github.com/PhongDayNai/PawFeed_App](https://github.com/PhongDayNai/PawFeed_App)
+- **Details**: Refer to the Mobile App repository for source code, setup instructions, and mobile features.
+
+---
+
+# [PawFeed_Firmware (main.cpp)](https://github.com/PhongDayNai/PawFeed_Server/blob/main/machine/main.cpp)
+
+The ESP8266 microcontroller firmware codebase (written in C++/Arduino).
+
+- **File Link**: [https://github.com/PhongDayNai/PawFeed_Server/blob/main/machine/main.cpp](https://github.com/PhongDayNai/PawFeed_Server/blob/main/machine/main.cpp)
+- **Details**: This firmware is kept in this repository under the `machine/` folder. It runs directly on the ESP8266 hardware, handling motor control for food dispensing, local SoftAP Wi-Fi provisioning, MQTT messaging, NTP time synchronization, and offline feeding schedules.
